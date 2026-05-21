@@ -1,0 +1,18 @@
+{
+  "models": {
+    "orchestrator": "llama3.1:8b",
+    "vision": "qwen3.5:2b"
+  },
+  "unified_model": "qwen3.5:2b",
+  "screenshots": {
+    "directory": "/tmp/os-assistant/screenshots",
+    "max_retention": 10,
+    "unload_before_analysis": false
+  },
+  "formatter": {
+    "enabled": true
+  },
+  "orchestrator": {
+    "temperature": 0
+  }
+}
