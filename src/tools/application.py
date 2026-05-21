@@ -13,14 +13,32 @@ from .desktop_index import resolve
 
 
 def _open_application(app_name: str) -> str:
-    """Find a .desktop file for app_name and launch it via Gio.DesktopAppInfo.
+    """Find a .desktop file for app_name and launch it.
 
-    Falls back to parsing and executing the Exec= line directly if the GLib
-    constructor returns NULL (e.g. for PWAs or custom launchers).
+    Prefers parsing the Exec= line and spawning via subprocess.Popen with
+    redirected stdio — this prevents child process output from leaking into
+    the MCP server's JSON-RPC channel (critical for Chromium-based PWAs that
+    print "Opening in existing browser session." on launch).
+
+    Falls back to Gio.DesktopAppInfo.launch() only when Exec= is unavailable.
     """
     desktop_file = resolve(app_name)
     if desktop_file is None:
         return f"Could not find an application matching '{app_name}'."
+
+    exec_line = _read_exec_line(desktop_file)
+    if exec_line:
+        try:
+            subprocess.Popen(
+                shlex.split(exec_line), start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+            )
+            return f"Opened {app_name}."
+        except Exception as e:
+            return f"Failed to launch {app_name}: {e}"
 
     app_info = None
     try:
@@ -33,14 +51,6 @@ def _open_application(app_name: str) -> str:
         if launched:
             return f"Opened {app_name}."
         return f"Failed to launch {app_name} via DesktopAppInfo."
-
-    exec_line = _read_exec_line(desktop_file)
-    if exec_line:
-        try:
-            subprocess.Popen(shlex.split(exec_line), start_new_session=True)
-            return f"Opened {app_name}."
-        except Exception as e:
-            return f"Failed to launch {app_name}: {e}"
 
     return f"Failed to load desktop file for '{app_name}' (no valid Exec line)."
 

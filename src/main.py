@@ -1,21 +1,30 @@
 import asyncio
 import sys
 
-from .orchestrator import Orchestrator
+from .pipeline import Pipeline
+from .agents import Agents
+from .router import Router
+from .executor import Executor
+from .history import History
+from .formatter import Formatter
+from .extractor import Extractor
 from .voice import listen, speak
-from .config import debug_enabled, debug_verbose, debug_log_dir, debug_retention_days, debug_rotation
+from .config import (debug_enabled, debug_verbose, debug_log_dir,
+                     debug_retention_days, debug_rotation,
+                     chat_history_size, formatter_enabled)
 
 
 async def main_async() -> None:
-    """Initialize the orchestrator and run the interactive CLI/TTS loop.
-    
-    Accepts voice (stub) or text input, routes to the orchestrator, prints and
+    """Initialize the pipeline and run the interactive CLI/TTS loop.
+
+    Accepts voice (stub) or text input, routes through the pipeline, prints and
     speaks the response. Handles Ctrl+C and normal exit gracefully.
     """
     print("=" * 50)
     print("  CachyOS GNOME Local AI Assistant")
     print("  Models: config.json  |  TTS: Piper")
     print("  Subagents: general + vision  |  MCP tools")
+    print("  Architecture: Pipeline (Enrich→Route→Build→Execute→Format→Store)")
     print("  Type 'exit' or 'quit' to stop.")
     print("=" * 50)
 
@@ -31,11 +40,18 @@ async def main_async() -> None:
 
     print()
 
-    orchestrator = Orchestrator()
+    agents = Agents()
+    await agents.start()
 
-    print("Initializing MCP tools...", end=" ", flush=True)
-    await orchestrator.initialize()
-    print("done.\n")
+    pipeline = Pipeline(
+        router=Router(llm=agents.general_llm, prompt=agents.router_prompt),
+        executor=Executor(agents=agents),
+        history=History(max_turns=chat_history_size()),
+        formatter=Formatter(enabled=formatter_enabled()),
+        extractor=Extractor(),
+    )
+
+    print("Initializing MCP tools... done.\n")
 
     try:
         while True:
@@ -58,7 +74,7 @@ async def main_async() -> None:
                     break
 
                 print("Assistant: ", end="", flush=True)
-                response = await orchestrator.ainvoke(text)
+                response = await pipeline.process(text)
                 print(response)
                 speak(response)
 
@@ -71,7 +87,7 @@ async def main_async() -> None:
     finally:
         print("\nShutting down...")
         try:
-            await asyncio.shield(orchestrator.close())
+            await asyncio.shield(agents.shutdown())
         except Exception:
             pass
         print("Done.")
@@ -82,7 +98,7 @@ def main() -> None:
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:
-        pass  # Ctrl+C handled cleanly — already printed "Goodbye!"
+        pass
 
 
 if __name__ == "__main__":
