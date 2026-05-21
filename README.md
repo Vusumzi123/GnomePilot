@@ -227,4 +227,4 @@ $EDITOR prompts/general.md  # Change how the general agent responds
 
 ## License
 
-MIT
+GNU GPLv3
