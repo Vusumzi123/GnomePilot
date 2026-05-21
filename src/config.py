@@ -14,6 +14,12 @@ DEFAULT_CONFIG = {
         "temperature": 0,
         "chat_history_size": 10,
     },
+    "skills": {
+        "application": True,
+        "package_manager": True,
+        "window_manager": True,
+        "vision": True,
+    },
 }
 
 
@@ -124,3 +130,8 @@ def debug_retention_days() -> int:
 def debug_rotation() -> str:
     """Max log file size before rotation (e.g. '10 MB', '1 GB')."""
     return load_config().get("debug", {}).get("rotation", "10 MB")
+
+
+def skill_enabled(name: str) -> bool:
+    """Whether a skill module should be loaded. Defaults to True."""
+    return bool(load_config().get("skills", {}).get(name, True))

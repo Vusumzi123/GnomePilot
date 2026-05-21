@@ -28,7 +28,7 @@ class Executor:
 
     async def execute(self, agents_order: list[str], messages: list, *,
                       vision_context: str = "", user_input: str = "",
-                      recursion_limit: int = 10) -> AgentResult:
+                      recursion_limit: int = 5) -> AgentResult:
         """Execute the given agents in sequence.
 
         For a chain ["vision", "general"]:
@@ -69,9 +69,24 @@ class Executor:
             )
 
             raw_messages = result["messages"]
-            self.last_tool_calls.extend(Extractor.tool_calls(raw_messages))
+            calls = Extractor.tool_calls(raw_messages)
+            self.last_tool_calls.extend(calls)
             response = Extractor.response(raw_messages)
             logger.info("{} agent returned {} chars", name, len(response))
+
+            # Detect and warn about duplicate tool calls (LLM looping)
+            seen: dict[tuple, int] = {}
+            duplicates = []
+            for c in calls:
+                key = (c["name"], str(c["args"]))
+                seen[key] = seen.get(key, 0) + 1
+            for key, count in seen.items():
+                if count > 1:
+                    duplicates.append(f"{key[0]}({key[1]}) ×{count}")
+
+            if duplicates:
+                logger.warning("Duplicate tool calls detected: {}", ", ".join(duplicates))
+                response = "I was unable to complete your request — the tool kept failing. " + response
 
             if name == "vision":
                 vision_context = response
