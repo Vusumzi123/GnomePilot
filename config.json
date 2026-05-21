@@ -14,6 +14,7 @@
   },
   "orchestrator": {
     "temperature": 0,
-    "num_ctx": 8192
+    "num_ctx": 8192,
+    "chat_history_size": 10
   }
 }

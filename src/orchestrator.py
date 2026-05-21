@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
-from src.config import get_model, get_setting, read_prompt, unified_model, formatter_enabled, num_ctx
+from src.config import get_model, get_setting, read_prompt, unified_model, formatter_enabled, num_ctx, chat_history_size
 
 
 class Orchestrator:
@@ -57,6 +57,8 @@ class Orchestrator:
         self.general_agent = None
         self.vision_agent = None
         self.last_tool_calls: list[dict] = []
+        self.chat_history: list[dict[str, str]] = []
+        self.chat_history_size = chat_history_size()
 
     async def initialize(self) -> None:
         """Start the MCP server, discover tools, and build both ReAct agents.
@@ -159,15 +161,39 @@ class Orchestrator:
                         prev["result"] = m.content
                         break
 
+    def _build_messages(self, user_input: str, include_history: bool = True) -> list:
+        """Build the messages list for an agent invocation.
+
+        Prepends previous conversation turns as (HumanMessage, AIMessage) pairs
+        so the LLM sees the full chat context. Only the first agent in a chain
+        gets history; subsequent chained agents receive a crafted prompt instead.
+        """
+        messages: list = []
+        if include_history and self.chat_history and self.chat_history_size > 0:
+            for turn in self.chat_history[-self.chat_history_size:]:
+                messages.append(HumanMessage(content=turn["user"]))
+                messages.append(AIMessage(content=turn["assistant"]))
+        messages.append(HumanMessage(content=user_input))
+        return messages
+
+    def _add_to_history(self, user_input: str, response: str) -> None:
+        """Append a turn to chat history, trimming to the configured max size."""
+        if self.chat_history_size <= 0:
+            return
+        self.chat_history.append({"user": user_input, "assistant": response})
+        while len(self.chat_history) > self.chat_history_size:
+            self.chat_history.pop(0)
+
     async def ainvoke(self, user_input: str) -> str:
         """Route to the correct agent(s) via LLM, chain if multiple needed, and return
-        the cleaned final response.
+        the cleaned final response. Maintains conversation context across calls.
 
         1. Router LLM decides which agent(s) — "general", "vision", or both.
-        2. Runs agents sequentially; vision agent's result is fed as context to general.
-        3. Extracts tool call tracking info.
-        4. Pulls the final text response from the message history.
-        5. Passes it through the regex formatter.
+        2. Builds message list with chat history (first agent only).
+        3. Runs agents sequentially; vision agent's result is fed as context to general.
+        4. Extracts tool call tracking info.
+        5. Pulls the final text response from the message history.
+        6. Formats, stores in history, and returns.
         """
         self.last_tool_calls.clear()
         agents = await self._route(user_input)
@@ -177,7 +203,7 @@ class Orchestrator:
 
         for i, name in enumerate(agents):
             agent = self.vision_agent if name == "vision" else self.general_agent
-            prompt = user_input
+            is_first = (i == 0)
 
             if name == "general" and vision_context:
                 prompt = (
@@ -185,9 +211,12 @@ class Orchestrator:
                     f"Context from vision analysis (already completed):\n{vision_context}\n\n"
                     "Now perform the requested action using this context."
                 )
+                messages = [HumanMessage(content=prompt)]
+            else:
+                messages = self._build_messages(user_input, include_history=is_first)
 
             result = await agent.ainvoke(
-                {"messages": [HumanMessage(content=prompt)]},
+                {"messages": messages},
                 {"recursion_limit": 10},
             )
 
@@ -199,7 +228,9 @@ class Orchestrator:
 
             final_response = response
 
-        return await self._format_response(final_response)
+        formatted = await self._format_response(final_response)
+        self._add_to_history(user_input, formatted)
+        return formatted
 
     _STRIP_RE = re.compile(
         "["
