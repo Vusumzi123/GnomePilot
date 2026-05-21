@@ -16,5 +16,12 @@
     "temperature": 0,
     "num_ctx": 8192,
     "chat_history_size": 10
+  },
+  "debug": {
+    "enabled": true,
+    "verbose": true,
+    "log_dir": "logs",
+    "retention_days": 7,
+    "rotation": "10 MB"
   }
 }

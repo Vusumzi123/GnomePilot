@@ -3,6 +3,7 @@ import sys
 
 from .orchestrator import Orchestrator
 from .voice import listen, speak
+from .config import debug_enabled, debug_verbose, debug_log_dir, debug_retention_days, debug_rotation
 
 
 async def main_async() -> None:
@@ -17,6 +18,17 @@ async def main_async() -> None:
     print("  Subagents: general + vision  |  MCP tools")
     print("  Type 'exit' or 'quit' to stop.")
     print("=" * 50)
+
+    if debug_enabled():
+        from .debug import configure
+        configure(
+            verbose=debug_verbose(),
+            log_dir=debug_log_dir(),
+            retention_days=debug_retention_days(),
+            rotation=debug_rotation(),
+        )
+        print("  Debug: ON    (stderr + {}/opencode_*.log)".format(debug_log_dir()))
+
     print()
 
     orchestrator = Orchestrator()

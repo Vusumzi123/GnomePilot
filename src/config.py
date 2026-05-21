@@ -99,3 +99,28 @@ def chat_history_size() -> int:
     """Number of previous conversation turns to keep as context (0 = disabled)."""
     cfg = load_config()
     return int(cfg.get("orchestrator", {}).get("chat_history_size", 10))
+
+
+def debug_enabled() -> bool:
+    """Whether the debug/logging system is active."""
+    return bool(load_config().get("debug", {}).get("enabled", False))
+
+
+def debug_verbose() -> bool:
+    """Whether to include full LLM prompt dumps in debug output."""
+    return bool(load_config().get("debug", {}).get("verbose", False))
+
+
+def debug_log_dir() -> str:
+    """Directory for persistent debug log files (relative to project root)."""
+    return load_config().get("debug", {}).get("log_dir", "logs")
+
+
+def debug_retention_days() -> int:
+    """Number of days to keep rotated log files."""
+    return int(load_config().get("debug", {}).get("retention_days", 7))
+
+
+def debug_rotation() -> str:
+    """Max log file size before rotation (e.g. '10 MB', '1 GB')."""
+    return load_config().get("debug", {}).get("rotation", "10 MB")

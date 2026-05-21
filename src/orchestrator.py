@@ -8,8 +8,11 @@ from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
+from loguru import logger
 
-from src.config import get_model, get_setting, read_prompt, unified_model, formatter_enabled, num_ctx, chat_history_size
+from src.config import (get_model, get_setting, read_prompt, unified_model,
+                        formatter_enabled, num_ctx, chat_history_size,
+                        debug_enabled, debug_verbose)
 
 
 class Orchestrator:
@@ -37,10 +40,16 @@ class Orchestrator:
             model = vision_model = unified
 
         base_kwargs = {"num_ctx": ctx} if ctx else {}
-        self.llm = ChatOllama(model=model, temperature=temperature, **base_kwargs)
-        self.vision_llm = ChatOllama(model=vision_model, temperature=temperature, **base_kwargs)
 
-        self.router_llm = ChatOllama(model=model, temperature=0, stop=["\n"], **base_kwargs)
+        cb_kwargs = {}
+        if debug_enabled():
+            from src.debug import DebugCallbackHandler
+            cb_kwargs = {"callbacks": [DebugCallbackHandler(verbose=debug_verbose())]}
+
+        self.llm = ChatOllama(model=model, temperature=temperature, **base_kwargs, **cb_kwargs)
+        self.vision_llm = ChatOllama(model=vision_model, temperature=temperature, **base_kwargs, **cb_kwargs)
+
+        self.router_llm = ChatOllama(model=model, temperature=0, stop=["\n"], **base_kwargs, **cb_kwargs)
 
         self.formatter_enabled = formatter_enabled()
 
@@ -113,17 +122,23 @@ class Orchestrator:
 
         has_screen = any(w in lower for w in SCREEN_WORDS)
         has_action = any(w in lower for w in ACTION_WORDS)
+        logger.debug("Router (regex): screen={}, action={}", has_screen, has_action)
 
         if has_screen and has_action:
+            logger.info("Route → [vision, general] (chain)")
             return ["vision", "general"]
         if has_screen and not has_action:
+            logger.info("Route → [vision]")
             return ["vision"]
         if has_action and not has_screen:
+            logger.info("Route → [general]")
             return ["general"]
 
         answer = await self._llm_is_screen(lower)
         if answer:
+            logger.info("Route → [vision] (LLM)")
             return ["vision"]
+        logger.info("Route → [general] (LLM)")
         return ["general"]
 
     async def _llm_is_screen(self, user_input: str) -> bool:
@@ -131,6 +146,8 @@ class Orchestrator:
         if not self.router_prompt:
             return False
         try:
+            logger.debug("Router LLM query: {}", self.router_prompt)
+            logger.debug("Router LLM input: {}", user_input)
             msg = await self.router_llm.ainvoke([
                 HumanMessage(content=f"{self.router_prompt}\n\nRequest: {user_input}")
             ])
@@ -170,7 +187,9 @@ class Orchestrator:
         """
         messages: list = []
         if include_history and self.chat_history and self.chat_history_size > 0:
-            for turn in self.chat_history[-self.chat_history_size:]:
+            effective = self.chat_history[-self.chat_history_size:]
+            logger.info("History: prepending {} turns (max={})", len(effective), self.chat_history_size)
+            for turn in effective:
                 messages.append(HumanMessage(content=turn["user"]))
                 messages.append(AIMessage(content=turn["assistant"]))
         messages.append(HumanMessage(content=user_input))
@@ -183,6 +202,7 @@ class Orchestrator:
         self.chat_history.append({"user": user_input, "assistant": response})
         while len(self.chat_history) > self.chat_history_size:
             self.chat_history.pop(0)
+        logger.info("History: now {}/{} turns", len(self.chat_history), self.chat_history_size)
 
     async def ainvoke(self, user_input: str) -> str:
         """Route to the correct agent(s) via LLM, chain if multiple needed, and return
@@ -196,6 +216,7 @@ class Orchestrator:
         6. Formats, stores in history, and returns.
         """
         self.last_tool_calls.clear()
+        logger.info("Routing: {!r:.80}", user_input)
         agents = await self._route(user_input)
 
         final_response = ""
@@ -204,8 +225,10 @@ class Orchestrator:
         for i, name in enumerate(agents):
             agent = self.vision_agent if name == "vision" else self.general_agent
             is_first = (i == 0)
+            logger.info("Chain step {}/{}: {} (first={})", i + 1, len(agents), name, is_first)
 
             if name == "general" and vision_context:
+                logger.info("Chaining: injecting {} chars vision context", len(vision_context))
                 prompt = (
                     f"The user asked: \"{user_input}\"\n\n"
                     f"Context from vision analysis (already completed):\n{vision_context}\n\n"
@@ -222,6 +245,7 @@ class Orchestrator:
 
             self._extract_tool_calls(result["messages"])
             response = self._last_response(result["messages"])
+            logger.info("{} agent returned {} chars", name, len(response))
 
             if name == "vision":
                 vision_context = response
@@ -230,6 +254,7 @@ class Orchestrator:
 
         formatted = await self._format_response(final_response)
         self._add_to_history(user_input, formatted)
+        logger.info("Done: {} chars, {} tool calls", len(formatted), len(self.last_tool_calls))
         return formatted
 
     _STRIP_RE = re.compile(
@@ -264,7 +289,10 @@ class Orchestrator:
             cleaned = self._JSON_FENCE_RE.sub(r"\1", text)
             cleaned = self._STRIP_RE.sub("", cleaned)
             cleaned = self._TOOL_CALL_RE.sub("", cleaned)
-            return re.sub(r"\s{2,}", " ", cleaned).strip()
+            result = re.sub(r"\s{2,}", " ", cleaned).strip()
+            if len(result) != len(text):
+                logger.debug("Formatter: {} → {} chars", len(text), len(result))
+            return result
         except Exception:
             return text
 
