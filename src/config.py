@@ -83,3 +83,12 @@ def formatter_enabled() -> bool:
     """Whether the regex-based response formatter is active."""
     cfg = load_config()
     return cfg.get("formatter", {}).get("enabled", False)
+
+
+def num_ctx() -> int | None:
+    """Context window size for Ollama models (None = use model default, typically 2048)."""
+    cfg = load_config()
+    val = cfg.get("orchestrator", {}).get("num_ctx")
+    if val is not None:
+        return int(val)
+    return None

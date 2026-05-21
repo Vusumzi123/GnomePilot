@@ -13,6 +13,7 @@
     "enabled": true
   },
   "orchestrator": {
-    "temperature": 0
+    "temperature": 0,
+    "num_ctx": 8192
   }
 }
