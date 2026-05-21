@@ -9,14 +9,7 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
-from src.config import get_model, get_setting, read_prompt, unified_model, formatter_enabled
-
-
-VISION_KEYWORDS = [
-    r"screen", r"see", r"display", r"monitor", r"screenshot",
-    r"what.*on", r"show", r"look", r"visible", r"desktop",
-    r"what.*see", r"on my screen",
-]
+from src.config import get_model, get_setting, read_prompt, unified_model, formatter_enabled, num_ctx
 
 
 class Orchestrator:
@@ -31,22 +24,27 @@ class Orchestrator:
     def __init__(self, model: str | None = None, temperature: float | None = None):
         """Resolve models from config, create ChatOllama instances, load prompts.
 
-        If unified_model is set in config, both agents share one model to avoid
-        VRAM swapping. Otherwise each agent uses its own Ollama model.
+        If unified_model is set in config, both agents and the router share one model
+        to avoid VRAM swapping. Otherwise each agent uses its own Ollama model.
         """
         model = model or get_model("orchestrator", "llama3.1:8b")
         vision_model = get_model("vision", "qwen3.5:4b")
         temperature = temperature if temperature is not None else get_setting("orchestrator.temperature", 0)
+        ctx = num_ctx()
 
         unified = unified_model()
         if unified:
             model = vision_model = unified
 
-        self.llm = ChatOllama(model=model, temperature=temperature)
-        self.vision_llm = ChatOllama(model=vision_model, temperature=temperature)
+        base_kwargs = {"num_ctx": ctx} if ctx else {}
+        self.llm = ChatOllama(model=model, temperature=temperature, **base_kwargs)
+        self.vision_llm = ChatOllama(model=vision_model, temperature=temperature, **base_kwargs)
+
+        self.router_llm = ChatOllama(model=model, temperature=0, stop=["\n"], **base_kwargs)
 
         self.formatter_enabled = formatter_enabled()
 
+        self.router_prompt = read_prompt("router", "")
         self.general_prompt = read_prompt("general", (
             "You are a helpful AI assistant running on CachyOS (Arch Linux with GNOME). "
             "You have tools to open/close applications, search/install packages, and "
@@ -92,9 +90,54 @@ class Orchestrator:
             prompt=self.vision_prompt,
         )
 
-    def _is_vision_request(self, text: str) -> bool:
-        """Check whether the user input matches vision-related keywords."""
-        return any(re.search(p, text.lower()) for p in VISION_KEYWORDS)
+    async def _route(self, user_input: str) -> list[str]:
+        """Decide which agent(s) to invoke — hybrid regex + LLM.
+
+        Step 1: Regex catches obvious patterns (screen words, action words).
+                When both screen + action match → chain immediately, no LLM.
+        Step 2: LLM handles ambiguous queries with a simple yes/no question
+                ("Is the user asking about their screen?"). Reliable on 2B+ models.
+
+        Returns ["vision"], ["general"], or ["vision","general"] (chain).
+        """
+        lower = user_input.lower()
+
+        SCREEN_WORDS = ("screen", "display", "monitor", "screenshot",
+                         "what is on my", "what's on my", "what can you see",
+                         "what do you see", "look at", "take a look",
+                         "describe what you see", "describe my display")
+        ACTION_WORDS = ("open", "close", "move", "install", "launch",
+                         "start", "run", "terminate", "kill")
+
+        has_screen = any(w in lower for w in SCREEN_WORDS)
+        has_action = any(w in lower for w in ACTION_WORDS)
+
+        if has_screen and has_action:
+            return ["vision", "general"]
+        if has_screen and not has_action:
+            return ["vision"]
+        if has_action and not has_screen:
+            return ["general"]
+
+        answer = await self._llm_is_screen(lower)
+        if answer:
+            return ["vision"]
+        return ["general"]
+
+    async def _llm_is_screen(self, user_input: str) -> bool:
+        """Ask the router LLM a binary question: is this about the user's screen?"""
+        if not self.router_prompt:
+            return False
+        try:
+            msg = await self.router_llm.ainvoke([
+                HumanMessage(content=f"{self.router_prompt}\n\nRequest: {user_input}")
+            ])
+            content = msg.content
+            if isinstance(content, list):
+                content = " ".join(str(c) for c in content)
+            return content.strip().lower().startswith("yes")
+        except Exception:
+            return False
 
     def _extract_tool_calls(self, messages: list) -> None:
         """Walk LangGraph messages to record which tools were called and their results.
@@ -117,25 +160,46 @@ class Orchestrator:
                         break
 
     async def ainvoke(self, user_input: str) -> str:
-        """Route user input to the correct agent, run it, and return the cleaned response.
+        """Route to the correct agent(s) via LLM, chain if multiple needed, and return
+        the cleaned final response.
 
-        1. Picks vision_agent if input matches vision keywords, else general_agent.
-        2. Invokes the selected LangGraph ReAct agent.
+        1. Router LLM decides which agent(s) — "general", "vision", or both.
+        2. Runs agents sequentially; vision agent's result is fed as context to general.
         3. Extracts tool call tracking info.
         4. Pulls the final text response from the message history.
         5. Passes it through the regex formatter.
         """
         self.last_tool_calls.clear()
+        agents = await self._route(user_input)
 
-        agent = self.vision_agent if self._is_vision_request(user_input) else self.general_agent
+        final_response = ""
+        vision_context = ""
 
-        result = await agent.ainvoke({
-            "messages": [HumanMessage(content=user_input)]
-        })
+        for i, name in enumerate(agents):
+            agent = self.vision_agent if name == "vision" else self.general_agent
+            prompt = user_input
 
-        self._extract_tool_calls(result["messages"])
-        response = self._last_response(result["messages"])
-        return await self._format_response(response)
+            if name == "general" and vision_context:
+                prompt = (
+                    f"The user asked: \"{user_input}\"\n\n"
+                    f"Context from vision analysis (already completed):\n{vision_context}\n\n"
+                    "Now perform the requested action using this context."
+                )
+
+            result = await agent.ainvoke(
+                {"messages": [HumanMessage(content=prompt)]},
+                {"recursion_limit": 10},
+            )
+
+            self._extract_tool_calls(result["messages"])
+            response = self._last_response(result["messages"])
+
+            if name == "vision":
+                vision_context = response
+
+            final_response = response
+
+        return await self._format_response(final_response)
 
     _STRIP_RE = re.compile(
         "["
@@ -159,12 +223,15 @@ class Orchestrator:
         r'\{\s*"name"\s*:\s*"[^"]+",\s*"parameters"\s*:\s*\{[^}]*\}\s*\}'
     )
 
+    _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
     async def _format_response(self, text: str) -> str:
-        """Strip emojis, invisible chars, and leaky MCP tool-call artifacts via regex."""
+        """Strip emojis, invisible chars, JSON fences, and leaky MCP tool-call artifacts."""
         if not self.formatter_enabled:
             return text
         try:
-            cleaned = self._STRIP_RE.sub("", text)
+            cleaned = self._JSON_FENCE_RE.sub(r"\1", text)
+            cleaned = self._STRIP_RE.sub("", cleaned)
             cleaned = self._TOOL_CALL_RE.sub("", cleaned)
             return re.sub(r"\s{2,}", " ", cleaned).strip()
         except Exception:
