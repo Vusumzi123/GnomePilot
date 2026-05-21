@@ -101,13 +101,15 @@ class Orchestrator:
             prompt=self.vision_prompt,
         )
 
-    async def _route(self, user_input: str) -> list[str]:
+    async def _route(self, user_input: str, enriched: str = "") -> list[str]:
         """Decide which agent(s) to invoke — hybrid regex + LLM.
 
-        Step 1: Regex catches obvious patterns (screen words, action words).
+        Step 1: Regex catches obvious patterns (screen words, action words) in the
+                ORIGINAL input only — no history context to avoid false positives.
                 When both screen + action match → chain immediately, no LLM.
-        Step 2: LLM handles ambiguous queries with a simple yes/no question
-                ("Is the user asking about their screen?"). Reliable on 2B+ models.
+        Step 2: LLM handles ambiguous queries using the enriched input (with chat
+                context) so it can resolve references like "describe it again."
+                Reliable on 2B+ models.
 
         Returns ["vision"], ["general"], or ["vision","general"] (chain).
         """
@@ -134,7 +136,8 @@ class Orchestrator:
             logger.info("Route → [general]")
             return ["general"]
 
-        answer = await self._llm_is_screen(lower)
+        llm_input = enriched or user_input
+        answer = await self._llm_is_screen(llm_input)
         if answer:
             logger.info("Route → [vision] (LLM)")
             return ["vision"]
@@ -204,20 +207,35 @@ class Orchestrator:
             self.chat_history.pop(0)
         logger.info("History: now {}/{} turns", len(self.chat_history), self.chat_history_size)
 
+    def _enrich_for_routing(self, user_input: str) -> str:
+        """Prepend recent chat context so the router can resolve ambiguous references.
+
+        Concatenates the last few user queries into a one-line prefix.  This lets
+        the router (especially the LLM fallback) understand that "describe it again"
+        after "what is on my screen" means the user wants vision, not general chat.
+        """
+        if not self.chat_history or self.chat_history_size <= 0:
+            return user_input
+        last = self.chat_history[-3:]
+        snippets = [t["user"][:80].replace("\n", " ") for t in last]
+        ctx = " | ".join(snippets)
+        return f"[History: {ctx}] User: {user_input}"
+
     async def ainvoke(self, user_input: str) -> str:
         """Route to the correct agent(s) via LLM, chain if multiple needed, and return
         the cleaned final response. Maintains conversation context across calls.
 
-        1. Router LLM decides which agent(s) — "general", "vision", or both.
-        2. Builds message list with chat history (first agent only).
-        3. Runs agents sequentially; vision agent's result is fed as context to general.
-        4. Extracts tool call tracking info.
-        5. Pulls the final text response from the message history.
-        6. Formats, stores in history, and returns.
+        1. Enrichs input with recent history so routing is context-aware.
+        2. Router LLM decides which agent(s) — "general", "vision", or both.
+        3. Builds message list with chat history (first agent only).
+        4. Runs agents sequentially; vision agent's result is fed as context to general.
+        5. Extracts tool call tracking info.
+        6. Pulls the final text response from the message history.
+        7. Formats, stores in history, and returns.
         """
         self.last_tool_calls.clear()
         logger.info("Routing: {!r:.80}", user_input)
-        agents = await self._route(user_input)
+        agents = await self._route(user_input, self._enrich_for_routing(user_input))
 
         final_response = ""
         vision_context = ""
