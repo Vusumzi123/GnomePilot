@@ -12,6 +12,7 @@ DEFAULT_CONFIG = {
     },
     "orchestrator": {
         "temperature": 0,
+        "chat_history_size": 10,
     },
 }
 
@@ -92,3 +93,9 @@ def num_ctx() -> int | None:
     if val is not None:
         return int(val)
     return None
+
+
+def chat_history_size() -> int:
+    """Number of previous conversation turns to keep as context (0 = disabled)."""
+    cfg = load_config()
+    return int(cfg.get("orchestrator", {}).get("chat_history_size", 10))

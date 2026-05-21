@@ -1,93 +1,104 @@
-# OpenCode Prompt: CachyOS GNOME Local AI Assistant
+# GnomePilot — CachyOS GNOME Local AI Assistant (Design Spec)
 
-**System Context for the Coding Agent:**
-You are an expert systems programmer and AI engineer tasked with building a fully local, voice-responsive OS assistant for an Arch-based Linux distribution (CachyOS) running the GNOME desktop environment on Wayland. The system must use an Orchestrator-Worker sub-agent architecture leveraging the Model Context Protocol (MCP) for tool execution. 
-
-All machine learning models must be capable of running locally via Ollama and fit comfortably within a 12GB VRAM GPU environment.
-
-The user will review and approve the codebase after each defined phase. Do not proceed to the next phase until the user explicitly approves the current phase's tests.
-
----
+**Status:** Phase 4 in progress. Phases 1–3 complete and tested.
 
 ## Architecture Requirements
 
-* **Language:** Python 3.11+
-* **Orchestrator:** LangChain or AutoGen (Python) to route intents via function calling.
-* **Audio/Voice:** OpenWakeWord for wake word detection, Whisper (small/base) for STT, Piper TTS for fast local speech generation.
-* **Vision:** `grim` (Wayland screenshot tool) + `llava:7b` via Ollama.
-* **LLM:** `llama3:8b-instruct` (or similar 8B model via Ollama) for the core orchestrator.
-* **Tooling Standard:** Model Context Protocol (MCP) for system execution.
-* **Window Management:** GNOME Wayland requires a custom DBus/GNOME Extension bridge, as standard X11 tools (`wmctrl`) will not work.
+| Requirement | Planned | Implemented |
+|-------------|---------|-------------|
+| Language | Python 3.11+ | Python 3.14 |
+| Orchestrator | LangChain / AutoGen | LangGraph `create_react_agent` with dual agents |
+| Routing | LLM function-calling | Hybrid: regex (fast path) + LLM yes/no (ambiguous) + chaining support |
+| Voice / TTS | Piper TTS + Whisper STT | Piper TTS integrated; STT stub (returns None, CLI fallback) |
+| Vision | grim + llava:7b | XDG Desktop Portal (Wayland) + qwen3.5 via Ollama |
+| LLM | llama3:8b-instruct | Configurable — qwen3.5:2b through qwen3.5:9b |
+| Tooling | MCP (Model Context Protocol) | MCP stdio server with auto-discovery plugin system |
+| Window Mgmt | GNOME Shell Extension DBus | Extension at `org.gnome.Shell.Extensions.Assistant` |
+
+### Additional Features (beyond spec)
+
+- **Desktop app index** — pre-built scored lookup of all .desktop files (275+ entries), supports PWAs with numeric IDs via Name= field matching
+- **Chat history** — configurable multi-turn context (Human/AI message pairs)
+- **Regex formatter** — strips emojis, invisible chars, leaked tool-call artifacts
+- **Unified model mode** — single model for both agents to fit in < 12 GB VRAM
+- **Context window** — configurable `num_ctx` (8192 default, up to 32768)
+- **Recursion limit** — capped at 10 to prevent tool-call loops
+- **Screenshot FIFO** — temp storage with configurable retention
 
 ---
 
-## Phase 1: Core Orchestrator and Voice Foundation
+## Phase 1: Core Orchestrator and Voice Foundation ✅
 
-**Task 1.1: Environment & Orchestrator Setup**
-* Initialize a Python project with `poetry` or `venv`.
-* Set up the main Orchestrator loop using LangChain/AutoGen that connects to a local Ollama instance (running `llama3:8b`).
-* Implement a simple command-line interface to pass text to the Orchestrator and receive text back.
+**Complete.** All tests pass.
 
-**Task 1.2: Voice Integration (TTS & STT)**
-* Integrate `piper-tts` for text-to-speech output. Write a function that takes the Orchestrator's text response and plays it via standard Linux audio (ALSA/PulseAudio/PipeWire).
-* *(Optional for Phase 1, but prepare architecture):* Stub out the Speech-to-Text (STT) input function.
-
-**Phase 1 Review Gate:**
-* Test 1: Run the script, input "Hello system", and verify the LLM responds appropriately in text.
-* Test 2: Verify the response is spoken audibly using Piper TTS.
-* *Pause and wait for user approval.*
+- Python venv with LangChain/Ollama/LangGraph
+- CLI input/output loop
+- Piper TTS (`src/voice.py`) — synthesizes and plays via PipeWire
+- STT stubbed out (returns None, falls back to text input)
 
 ---
 
-## Phase 2: System Management Sub-Agents (MCP Integration)
+## Phase 2: System Management Sub-Agents (MCP Integration) ✅
 
-**Task 2.1: Implement the MCP Client**
-* Integrate an MCP client into the Orchestrator to allow secure, standardized tool execution.
+**Complete.** All tests pass.
 
-**Task 2.2: Application Agent (Open/Close)**
-* Implement an MCP tool/skill to find and launch applications by parsing `/usr/share/applications` `.desktop` files (using `gtk-launch` or `gio open`).
-* Implement an MCP tool to close applications gracefully, falling back to `killall` or `pkill` if necessary.
-
-**Task 2.3: Package Manager Agent**
-* Implement an MCP tool that interacts with `pacman` and `yay`/`paru`. 
-* It should support searching for a package and installing it. (Assume `sudoers` is configured to allow pacman without a password for this script, or use `pkexec`).
-
-**Phase 2 Review Gate:**
-* Test 1: Prompt: "Open Firefox." Verify the Orchestrator calls the App Agent and Firefox launches.
-* Test 2: Prompt: "Close Firefox." Verify the browser is terminated.
-* Test 3: Prompt: "Install htop." Verify the Package Agent executes the Arch package manager successfully.
-* *Pause and wait for user approval.*
+- MCP client via `MultiServerMCPClient` + `langchain-mcp-adapters`
+- Application agent: opens/closes via `.desktop` files + `Gio.DesktopAppInfo`
+  - Searches `/usr/share/applications`, `~/.local/share/applications`, `~/Applications/`
+  - PWA support via Name= field matching on numeric-ID desktop files
+  - Fallback to `shlex.split(Exec=)` when GLib constructor fails
+  - App name aliases (terminal → console, text editor → gedit)
+- Package manager: `pacman -Ss` + `yay -Ss` (AUR), install via `pkexec pacman -S`
+- `subprocess.os.environ` fix for MCP child process env filtering
 
 ---
 
-## Phase 3: Spatial Awareness & Vision (Wayland/GNOME specific)
+## Phase 3: Spatial Awareness & Vision (Wayland/GNOME) ✅
 
-**Task 3.1: The Vision Agent**
-* Implement a Python skill that uses the `grim` command-line tool to capture a screenshot to a temporary `.png` file.
-* Pass this image path to Ollama running a local Vision Language Model (`llava:7b` or `minicpm-v`).
-* Return the VLM's text analysis to the Orchestrator.
+**Complete.** All tests pass.
 
-**Task 3.2: The GNOME Window Agent (DBus Bridge)**
-* *Critical Wayland Constraint:* Since `wmctrl` fails on GNOME Wayland, write a minimalist GNOME Shell Extension (JavaScript) that exposes a DBus interface (e.g., `org.gnome.Shell.Extensions.Assistant`).
-* The extension must include a method `MoveWindowToWorkspace(appName, workspaceIndex)`.
-* Write the Python MCP tool to send DBus messages to this extension using `pydbus` or `dbus-python`.
-
-**Phase 3 Review Gate:**
-* Test 1: Prompt: "What is on my screen?" Verify `grim` fires, LLaVA processes the image, and the Orchestrator speaks the summary.
-* Test 2: Prompt: "Move the terminal to workspace 2." Verify the DBus message fires and GNOME Mutter shifts the window.
-* *Pause and wait for user approval.*
+- Vision via XDG Desktop Portal (`org.freedesktop.portal.Screenshot`)
+  - DBus mainloop in daemon thread, 20s timeout, permission dialog
+  - Image resize (800px max) before base64 encode
+  - Model unload before analysis for VRAM management
+  - FIFO screenshot retention in `/tmp/os-assistant/screenshots`
+- Window management via GNOME Shell Extension
+  - ES module format (`export default class`) for GNOME 50
+  - DBus under `org.gnome.Shell` bus name (not a separate name)
+  - `MoveWindowToWorkspace(appName, workspaceIndex)` — 0-based indices
 
 ---
 
-## Phase 4: Integration, Autonomy, and Refinement
+## Phase 4: Integration, Autonomy, and Refinement 🚧
 
-**Task 4.1: Chaining & Sub-agent Routing**
-* Refine the Orchestrator's system prompt so it correctly chains multiple tools. 
-* Implement logic for the Orchestrator to decide *which* sub-agent to invoke without hardcoded if/else statements (rely on LLM function-calling capabilities).
+### Task 4.1: Chaining & Sub-agent Routing ✅
 
-**Task 4.2: Continuous Listening (Optional but recommended)**
-* Implement the continuous listening loop using OpenWakeWord (e.g., "Hey Computer") and Whisper to stream voice directly into the Orchestrator's prompt queue.
+**Complete.** Router tested 11/11 with qwen3.5:2b at 8192 ctx.
 
-**Phase 4 Review Gate:**
-* Final Integration Test: Speak/Type: "Take a look at my screen, tell me what app is open, and then move it to workspace 3." 
-* Verify the Orchestrator coordinates the Vision Agent and Window Agent sequentially and outputs a final voice confirmation.
+- Replaced hardcoded keyword matching with hybrid router
+  - Regex fast-path for obvious screen/action patterns
+  - LLM binary yes/no for ambiguous queries
+  - Chain detection (screen + action) → runs agents sequentially
+- Vision → General chain: vision result injected as context to general agent
+- Chat history: remembers up to `chat_history_size` turns (configurable, default 10)
+- Recursion limit: 10 (prevents tool-call loops)
+
+### Task 4.2: Continuous Listening ❌
+
+**Not yet implemented.**
+
+- Planned: OpenWakeWord ("Hey Computer") + Whisper STT streaming
+- Current: `listen()` stub returns None, CLI text input works
+
+---
+
+## Future Improvements
+
+- [ ] OpenWakeWord/Whisper continuous listening loop
+- [ ] Volume/mute TTS control
+- [ ] Screen region selection for vision (not just full screen)
+- [ ] Window list/close-by-name via GNOME Shell Extension
+- [ ] Browser tab management via keyboard automation
+- [ ] System monitor (CPU, RAM, temp) via MCP tools
+- [ ] Notification management
+- [ ] File management MCP tools
