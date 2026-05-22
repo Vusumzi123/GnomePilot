@@ -4,6 +4,7 @@ Creates ChatOllama instances, starts the MCP tool server, discovers tools,
 builds ReAct agents, and handles graceful VRAM cleanup.
 """
 
+import asyncio
 import os
 import sys
 
@@ -19,6 +20,8 @@ class Agents:
     """Manages the lifecycle of LLM instances and LangGraph ReAct agents.
 
     Call start() to begin the MCP tool server and build agents.
+    Call restart() after config changes to reload tools without restarting
+    the main process.
     Call shutdown() to unload Ollama models from VRAM.
     """
 
@@ -56,6 +59,7 @@ class Agents:
 
         self._general_agent = None
         self._vision_agent = None
+        self._client = None
 
     # ── lifecycle ──
 
@@ -66,7 +70,7 @@ class Agents:
         general agent gets all other tools (open/close app, search/install
         package, move window).
         """
-        client = MultiServerMCPClient(
+        self._client = MultiServerMCPClient(
             {
                 "system_tools": {
                     "command": sys.executable,
@@ -76,7 +80,7 @@ class Agents:
                 }
             }
         )
-        tools = await client.get_tools()
+        tools = await self._client.get_tools()
 
         vision_tools = [t for t in tools if t.name == "tool_capture_screen"]
         general_tools = [t for t in tools if t.name != "tool_capture_screen"]
@@ -87,6 +91,17 @@ class Agents:
         self._vision_agent = create_react_agent(
             self._vision_llm, vision_tools, prompt=self.vision_prompt,
         )
+
+    async def restart(self) -> None:
+        """Shut down and restart the MCP tool server and agents.
+
+        Call after updating config.json (e.g., toggling skills) to apply
+        changes without restarting the entire process.
+        """
+        self._client = None
+        await asyncio.sleep(0.3)
+        await self.shutdown()
+        await self.start()
 
     async def shutdown(self) -> None:
         """Gracefully unload all Ollama models from VRAM."""

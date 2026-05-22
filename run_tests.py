@@ -19,7 +19,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent
 
 # Tests that need a running Ollama server
-_INTEGRATION_TESTS = {"test_agents", "test_executor", "test_pipeline"}
+_INTEGRATION_TESTS = {"test_agents", "test_executor", "test_pipeline", "test_close"}
 
 _LOGURU_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "SUCCESS")
 

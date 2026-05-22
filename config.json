@@ -23,5 +23,11 @@
     "log_dir": "logs",
     "retention_days": 7,
     "rotation": "10 MB"
+  },
+  "skills": {
+    "application": true,
+    "package_manager": true,
+    "window_manager": true,
+    "vision": true
   }
 }
