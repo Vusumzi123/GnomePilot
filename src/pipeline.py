@@ -11,6 +11,12 @@ from src.formatter import Formatter
 from src.extractor import Extractor
 from src.router import Router
 from src.executor import Executor
+from src.config import recursion_limit as cfg_recursion_limit
+
+try:
+    from langgraph.errors import GraphRecursionError
+except ImportError:
+    GraphRecursionError = RecursionError
 
 
 @dataclass
@@ -96,6 +102,7 @@ class Pipeline:
             # Stage 4: Execute agents
             result = await self.executor.execute(
                 ctx.agents, ctx.messages, user_input=user_input,
+                recursion_limit=cfg_recursion_limit(),
             )
             ctx.response = result.text
             ctx.tool_calls = result.tool_calls
@@ -107,6 +114,13 @@ class Pipeline:
             self.history.add_turn(user_input, ctx.formatted)
             logger.info("Done: {} chars, {} tool calls", len(ctx.formatted), len(ctx.tool_calls))
 
+        except GraphRecursionError:
+            ctx.error = "recursion_limit"
+            logger.warning("Pipeline: recursion limit reached")
+            ctx.formatted = (
+                "I'm having trouble completing that — it took too many "
+                "steps. Could you try breaking it into simpler requests?"
+            )
         except Exception as exc:
             ctx.error = str(exc)
             logger.error("Pipeline error: {}", exc)

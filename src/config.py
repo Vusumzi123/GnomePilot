@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
     "orchestrator": {
         "temperature": 0,
         "chat_history_size": 10,
+        "recursion_limit": 10,
     },
     "skills": {
         "application": True,
@@ -105,6 +106,11 @@ def chat_history_size() -> int:
     """Number of previous conversation turns to keep as context (0 = disabled)."""
     cfg = load_config()
     return int(cfg.get("orchestrator", {}).get("chat_history_size", 10))
+
+
+def recursion_limit() -> int:
+    """Max LangGraph recursion steps per agent call (default 10)."""
+    return int(load_config().get("orchestrator", {}).get("recursion_limit", 10))
 
 
 def debug_enabled() -> bool:

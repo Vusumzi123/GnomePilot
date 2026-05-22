@@ -180,6 +180,7 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
 | `orchestrator.temperature` | float | `0` | LLM temperature |
 | `orchestrator.num_ctx` | int | `8192` | Context window size (`ollama num_ctx`) |
 | `orchestrator.chat_history_size` | int | `10` | Conversation turns to remember (0 = disabled) |
+| `orchestrator.recursion_limit` | int | `10` | Max LLM-tool steps per agent call |
 | `screenshots.directory` | string | `/tmp/os-assistant/screenshots` | Screenshot storage |
 | `screenshots.max_retention` | int | `10` | Max screenshots (FIFO) |
 | `screenshots.unload_before_analysis` | bool | `true` | Unload other models before vision |

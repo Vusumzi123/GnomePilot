@@ -28,7 +28,7 @@ class Executor:
 
     async def execute(self, agents_order: list[str], messages: list, *,
                       vision_context: str = "", user_input: str = "",
-                      recursion_limit: int = 5) -> AgentResult:
+                       recursion_limit: int = 10) -> AgentResult:
         """Execute the given agents in sequence.
 
         For a chain ["vision", "general"]:
