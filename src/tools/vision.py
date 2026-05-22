@@ -22,6 +22,7 @@ from gi.repository import GLib
 from PIL import Image
 
 from src.config import get_model, screenshot_dir, screenshot_retention, unload_before_analysis
+from ._registry import tool
 
 
 SCREENSHOT_TIMEOUT = 20.0
@@ -176,13 +177,13 @@ def _capture_and_analyze() -> str:
         return f"Analysis failed: {e}"
 
 
-def register(mcp) -> None:
-    @mcp.tool()
-    def tool_capture_screen() -> str:
-        """Capture the current screen and describe what is visible.
 
-        Takes a screenshot via the system's screenshot portal (may show a
-        permission dialog) and analyzes the image using a local vision model
-        to describe what is currently on screen.
-        """
-        return _capture_and_analyze()
+@tool()
+def tool_capture_screen() -> str:
+    """Capture the current screen and describe what is visible.
+
+    Takes a screenshot via the system's screenshot portal (may show a
+    permission dialog) and analyzes the image using a local vision model
+    to describe what is currently on screen.
+    """
+    return _capture_and_analyze()

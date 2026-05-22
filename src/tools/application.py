@@ -13,6 +13,7 @@ from gi.repository import Gio
 
 from .desktop_index import resolve
 from .fuzzy_match import best as best_match
+from ._registry import tool
 
 _WINDOWS_BUS = "org.gnome.Shell"
 _WIN_LIST_PATH = "/org/gnome/Shell/Extensions/WindowsExt"
@@ -144,32 +145,33 @@ def _close_application(app_name: str) -> str:
     return f"Matched '{matched_title}' but could not find its window ID."
 
 
-def register(mcp) -> None:
-    @mcp.tool()
-    def tool_open_application(app_name: str) -> str:
-        """Launch/find and open an application by its name.
 
-        Searches .desktop files in /usr/share/applications, ~/.local/share/applications,
-        and ~/Applications/ for a matching application. Matches by filename first,
-        then by the Name= field inside .desktop files (supports PWAs with numeric IDs).
-        Launches via GLib's DesktopAppInfo.
+@tool()
+def tool_open_application(app_name: str) -> str:
+    """Launch/find and open an application by its name.
 
-        Args:
-            app_name: Name of the application to open (e.g. "Firefox", "Terminal",
-                      "YouTube", "Files", "Calculator").
-        """
-        return _open_application(app_name)
+    Searches .desktop files in /usr/share/applications, ~/.local/share/applications,
+    and ~/Applications/ for a matching application. Matches by filename first,
+    then by the Name= field inside .desktop files (supports PWAs with numeric IDs).
+    Launches via GLib's DesktopAppInfo.
 
-    @mcp.tool()
-    def tool_close_application(app_name: str) -> str:
-        """Close an application by matching its window title.
+    Args:
+        app_name: Name of the application to open (e.g. "Firefox", "Terminal",
+                  "YouTube", "Files", "Calculator").
+    """
+    return _open_application(app_name)
 
-        Uses the GNOME Shell 'Window Calls Extended' extension to list all open
-        windows, fuzzy-matches the best title, and closes the window.  Reports
-        the closed window title, or lists all open windows if no match is found.
 
-        Args:
-            app_name: Name of the application to close (e.g. "Firefox",
-                      "Terminal", "Obsidian", "YouTube Music").
-        """
-        return _close_application(app_name)
+@tool()
+def tool_close_application(app_name: str) -> str:
+    """Close an application by matching its window title.
+
+    Uses the GNOME Shell 'Window Calls Extended' extension to list all open
+    windows, fuzzy-matches the best title, and closes the window.  Reports
+    the closed window title, or lists all open windows if no match is found.
+
+    Args:
+        app_name: Name of the application to close (e.g. "Firefox",
+                  "Terminal", "Obsidian", "YouTube Music").
+    """
+    return _close_application(app_name)

@@ -9,6 +9,8 @@ Register with `register(mcp)` -- called automatically by the plugin loader.
 
 import dbus
 
+from ._registry import tool
+
 DBUS_NAME = "org.gnome.Shell"
 DBUS_PATH = "/org/gnome/Shell/Extensions/Assistant"
 DBUS_IFACE = "org.gnome.Shell.Extensions.Assistant"
@@ -47,21 +49,21 @@ def _call_move_window(app_name: str, workspace_index: int) -> str:
         return f"Failed to move window: {e}"
 
 
-def register(mcp) -> None:
-    @mcp.tool()
-    def tool_move_window_to_workspace(app_name: str, workspace_index: int) -> str:
-        """Move a window matching the given name to a specific workspace.
 
-        Workspace indices are 0-based -- workspace 1 is index 0, workspace 2
-        is index 1, etc.  The match is case-insensitive and checks both the
-        window title and the application's WM_CLASS.
+@tool()
+def tool_move_window_to_workspace(app_name: str, workspace_index: int) -> str:
+    """Move a window matching the given name to a specific workspace.
 
-        Requires the 'os-assistant@cachyos' GNOME Shell Extension to be active.
+    Workspace indices are 0-based -- workspace 1 is index 0, workspace 2
+    is index 1, etc.  The match is case-insensitive and checks both the
+    window title and the application's WM_CLASS.
 
-        Args:
-            app_name: Name of the application/window to move (e.g. "Terminal",
-                      "Firefox", "Files").
-            workspace_index: 0-based index of the target workspace (0 = first
-                             workspace, 1 = second, etc.).
-        """
-        return _call_move_window(app_name, workspace_index)
+    Requires the 'os-assistant@cachyos' GNOME Shell Extension to be active.
+
+    Args:
+        app_name: Name of the application/window to move (e.g. "Terminal",
+                  "Firefox", "Files").
+        workspace_index: 0-based index of the target workspace (0 = first
+                         workspace, 1 = second, etc.).
+    """
+    return _call_move_window(app_name, workspace_index)
