@@ -16,10 +16,8 @@ from .fuzzy_match import best as best_match
 from ._registry import tool
 
 _WINDOWS_BUS = "org.gnome.Shell"
-_WIN_LIST_PATH = "/org/gnome/Shell/Extensions/WindowsExt"
-_WIN_LIST_IFACE = "org.gnome.Shell.Extensions.WindowsExt"
-_WIN_CLOSE_PATH = "/org/gnome/Shell/Extensions/Windows"
-_WIN_CLOSE_IFACE = "org.gnome.Shell.Extensions.Windows"
+_WIN_PATH = "/org/gnome/Shell/Extensions/Windows"
+_WIN_IFACE = "org.gnome.Shell.Extensions.Windows"
 
 
 def _open_application(app_name: str) -> str:
@@ -89,9 +87,9 @@ def _close_application(app_name: str) -> str:
     # 1. Fetch window list via DBus
     try:
         bus = dbus.SessionBus()
-        proxy = bus.get_object(_WINDOWS_BUS, _WIN_LIST_PATH)
-        list_iface = dbus.Interface(proxy, _WIN_LIST_IFACE)
-        raw = list_iface.List()
+        proxy = bus.get_object(_WINDOWS_BUS, _WIN_PATH)
+        iface = dbus.Interface(proxy, _WIN_IFACE)
+        raw = iface.List()
     except dbus.exceptions.DBusException as exc:
         name = exc.get_dbus_name()
         if name in (
@@ -101,7 +99,7 @@ def _close_application(app_name: str) -> str:
             "org.freedesktop.DBus.Error.UnknownObject",
         ):
             return (
-                f"The 'Window Calls Extended' GNOME Shell Extension "
+                f"The 'Window Calls' GNOME Shell Extension "
                 f"is not available. Please install it from "
                 f"extensions.gnome.org and restart your session. "
                 f"(DBus: {exc})"
@@ -134,9 +132,7 @@ def _close_application(app_name: str) -> str:
     for w in windows:
         if w.get("title") == matched_title:
             try:
-                close_proxy = bus.get_object(_WINDOWS_BUS, _WIN_CLOSE_PATH)
-                close_iface = dbus.Interface(close_proxy, _WIN_CLOSE_IFACE)
-                close_iface.Close(w["id"])
+                iface.Close(w["id"])
             except Exception as exc:
                 return f"Found window '{matched_title}' but failed to close it: {exc}"
             return f"Closed {matched_title}."
@@ -166,7 +162,7 @@ def tool_open_application(app_name: str) -> str:
 def tool_close_application(app_name: str) -> str:
     """Close an application by matching its window title.
 
-    Uses the GNOME Shell 'Window Calls Extended' extension to list all open
+    Uses the GNOME Shell 'Window Calls' extension to list all open
     windows, fuzzy-matches the best title, and closes the window.  Reports
     the closed window title, or lists all open windows if no match is found.
 
