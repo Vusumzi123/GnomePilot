@@ -1,9 +1,11 @@
 """Skill: Package management (search & install via pacman/AUR).
 
-Register with `register(mcp)` -- called automatically by the plugin loader.
+Auto-discovered via @tool() decorator — no manual wiring needed.
 """
 
 import subprocess
+
+from ._registry import tool
 
 
 def _search_packages(query: str) -> str:
@@ -52,26 +54,27 @@ def _install_package(package_name: str) -> str:
     return f"Failed to install {package_name}: {result.stderr.strip() or 'unknown error'}"
 
 
-def register(mcp) -> None:
-    @mcp.tool()
-    def tool_search_packages(query: str) -> str:
-        """Search for available software packages in pacman repositories and the AUR.
 
-        Queries both official Arch repositories and the Arch User Repository (AUR)
-        via yay. Returns top results from each.
+@tool()
+def tool_search_packages(query: str) -> str:
+    """Search for available software packages in pacman repositories and the AUR.
 
-        Args:
-            query: Search term for the package (e.g. "web browser", "htop").
-        """
-        return _search_packages(query)
+    Queries both official Arch repositories and the Arch User Repository (AUR)
+    via yay. Returns top results from each.
 
-    @mcp.tool()
-    def tool_install_package(package_name: str) -> str:
-        """Install a software package using pacman (via pkexec for privileges).
+    Args:
+        query: Search term for the package (e.g. "web browser", "htop").
+    """
+    return _search_packages(query)
 
-        Use this after confirming the exact package name with search_packages.
 
-        Args:
-            package_name: Exact name of the package to install (e.g. "htop", "firefox").
-        """
-        return _install_package(package_name)
+@tool()
+def tool_install_package(package_name: str) -> str:
+    """Install a software package using pacman (via pkexec for privileges).
+
+    Use this after confirming the exact package name with search_packages.
+
+    Args:
+        package_name: Exact name of the package to install (e.g. "htop", "firefox").
+    """
+    return _install_package(package_name)

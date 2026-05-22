@@ -1,0 +1,4 @@
+[skill]
+name = "window_manager"
+description = "Move windows between GNOME workspaces"
+prompt_hint = "- Move windows between workspaces"

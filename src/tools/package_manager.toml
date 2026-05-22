@@ -1,0 +1,4 @@
+[skill]
+name = "package_manager"
+description = "Search and install system packages (pacman / AUR)"
+prompt_hint = "- Search and install system packages (pacman / AUR)"

@@ -3,8 +3,8 @@
 All tools are auto-discovered from sibling modules via register_all(),
 which respects the `skills` section of config.json.
 
-To add a new skill, create a .py file in this directory with a register(mcp)
-function.  Toggle skills via `skills.<name>` in config.json.
+To add a new skill, create a .py file with @tool() decorators and a
+companion .toml manifest.  Toggle skills via `skills.<name>` in config.json.
 """
 
 from mcp.server.fastmcp import FastMCP

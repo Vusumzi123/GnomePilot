@@ -1,29 +1,38 @@
 # GnomePilot — CachyOS GNOME Local AI Assistant (Design Spec)
 
-**Status:** Phase 4 in progress. Phases 1–3 complete and tested.
+**Status:** Phase 4 complete. Pipeline architecture deployed.
+Skill auto-discovery (Steps 2–7) in progress.
 
 ## Architecture Requirements
 
 | Requirement | Planned | Implemented |
-|-------------|---------|-------------|
+|---|---|---|
 | Language | Python 3.11+ | Python 3.14 |
-| Orchestrator | LangChain / AutoGen | LangGraph `create_react_agent` with dual agents |
-| Routing | LLM function-calling | Hybrid: regex (fast path) + LLM yes/no (ambiguous) + chaining support |
+| Orchestrator | LangChain / AutoGen | **Pipeline (Chain of Responsibility)** — 7 single-responsibility classes: `Router`, `Executor`, `History`, `Formatter`, `Extractor`, `Agents`, `Pipeline` |
+| Routing | LLM function-calling | Hybrid: regex fast-path + LLM yes/no + history enrichment for context-aware routing |
 | Voice / TTS | Piper TTS + Whisper STT | Piper TTS integrated; STT stub (returns None, CLI fallback) |
 | Vision | grim + llava:7b | XDG Desktop Portal (Wayland) + qwen3.5 via Ollama |
 | LLM | llama3:8b-instruct | Configurable — qwen3.5:2b through qwen3.5:9b |
-| Tooling | MCP (Model Context Protocol) | MCP stdio server with auto-discovery plugin system |
-| Window Mgmt | GNOME Shell Extension DBus | Extension at `org.gnome.Shell.Extensions.Assistant` |
+| Tooling | MCP (Model Context Protocol) | MCP stdio server with auto-discovery + deferred `@tool()` registry |
+| Window Mgmt | GNOME Shell Extension DBus | `MoveWindowToWorkspace` + `List()`/`Close(id)` via Window Calls extensions |
 
-### Additional Features (beyond spec)
+### Additional Features (beyond original spec)
 
-- **Desktop app index** — pre-built scored lookup of all .desktop files (275+ entries), supports PWAs with numeric IDs via Name= field matching
-- **Chat history** — configurable multi-turn context (Human/AI message pairs)
+- **Pipeline architecture** — Router, History, Executor, Formatter, Extractor, Agents each in own file
+- **Fuzzy match** — reusable `score()`, `best()`, `ranked()` string matcher (100/90/70/50 scoring)
+- **DBus window close** — Window Calls Extended `List()` + `Close()` with fuzzy title matching
+- **Desktop app index** — pre-built `.desktop` file index with scored lookup (275+ entries), PWA support
+- **Chat history** — configurable multi-turn context with `enrich_for_routing()` context injection
 - **Regex formatter** — strips emojis, invisible chars, leaked tool-call artifacts
 - **Unified model mode** — single model for both agents to fit in < 12 GB VRAM
 - **Context window** — configurable `num_ctx` (8192 default, up to 32768)
-- **Recursion limit** — capped at 10 to prevent tool-call loops
-- **Screenshot FIFO** — temp storage with configurable retention
+- **Tool call deduplication** — detects LLM retry loops, warns user
+- **PWA stdout fix** — app launches redirect stdio to DEVNULL (prevents MCP JSON-RPC corruption)
+- **Skill auto-discovery** — adding a skill = 2 files (`.py` + `.toml`), zero boilerplate
+- **Skill manifests** — `.toml` files with `prompt_hint` auto-populate agent system prompt
+- **Configurable skills** — toggle individual tool modules via `config.json`
+- **Dynamic test runner** — `run_tests.py` auto-discovers all `test_*.py` suites
+- **Loguru debug logging** — stderr + file sinks with rotation/retention
 
 ---
 
@@ -35,6 +44,7 @@
 - CLI input/output loop
 - Piper TTS (`src/voice.py`) — synthesizes and plays via PipeWire
 - STT stubbed out (returns None, falls back to text input)
+- **Refactored:** `Orchestrator` replaced by Pipeline (7 domain classes)
 
 ---
 
@@ -43,13 +53,13 @@
 **Complete.** All tests pass.
 
 - MCP client via `MultiServerMCPClient` + `langchain-mcp-adapters`
-- Application agent: opens/closes via `.desktop` files + `Gio.DesktopAppInfo`
+- Application agent: open/close via `.desktop` files + `Gio.DesktopAppInfo`
   - Searches `/usr/share/applications`, `~/.local/share/applications`, `~/Applications/`
-  - PWA support via Name= field matching on numeric-ID desktop files
+  - PWA support via `Name=` field matching on numeric-ID desktop files
   - Fallback to `shlex.split(Exec=)` when GLib constructor fails
-  - App name aliases (terminal → console, text editor → gedit)
+  - App launch redirects stdio to DEVNULL (PWA stdout leak fix)
+  - App close via **DBus Window Calls** — `List()` + fuzzy match + `Close(id)`
 - Package manager: `pacman -Ss` + `yay -Ss` (AUR), install via `pkexec pacman -S`
-- `subprocess.os.environ` fix for MCP child process env filtering
 
 ---
 
@@ -61,27 +71,26 @@
   - DBus mainloop in daemon thread, 20s timeout, permission dialog
   - Image resize (800px max) before base64 encode
   - Model unload before analysis for VRAM management
-  - FIFO screenshot retention in `/tmp/os-assistant/screenshots`
 - Window management via GNOME Shell Extension
   - ES module format (`export default class`) for GNOME 50
-  - DBus under `org.gnome.Shell` bus name (not a separate name)
   - `MoveWindowToWorkspace(appName, workspaceIndex)` — 0-based indices
 
 ---
 
-## Phase 4: Integration, Autonomy, and Refinement 🚧
+## Phase 4: Integration, Autonomy, and Refinement ✅
+
+**Complete.** Pipeline architecture deployed.
 
 ### Task 4.1: Chaining & Sub-agent Routing ✅
 
-**Complete.** Router tested 11/11 with qwen3.5:2b at 8192 ctx.
-
-- Replaced hardcoded keyword matching with hybrid router
-  - Regex fast-path for obvious screen/action patterns
-  - LLM binary yes/no for ambiguous queries
-  - Chain detection (screen + action) → runs agents sequentially
-- Vision → General chain: vision result injected as context to general agent
-- Chat history: remembers up to `chat_history_size` turns (configurable, default 10)
-- Recursion limit: 10 (prevents tool-call loops)
+- Pipeline: `Router` → `Executor` → `History` → `Formatter` → `Extractor`
+- Hybrid router: regex fast-path + LLM binary classifier + history enrichment
+- Chain detection: screen + action → `["vision", "general"]`
+- Vision → General context injection
+- Chat history: configurable turns, `HumanMessage/AIMessage` pairs
+- Context-aware routing enrichment (`[History: ...]` prefix)
+- Tool call deduplication — detects and warns on LLM retry loops
+- Recursion limit: 5 (prevents infinite loops)
 
 ### Task 4.2: Continuous Listening ❌
 
@@ -94,7 +103,10 @@
 
 ## Future Improvements
 
+- [ ] Step 2–7 of `PLAN_SKILL_AUTO_DISCOVERY.md` (convert skills to `@tool()` + manifests)
 - [ ] OpenWakeWord/Whisper continuous listening loop
+- [ ] HTTP API backend (FastAPI) — Chat, Config, Log endpoints
+- [ ] Web UI (Svelte or htmx) served as static files
 - [ ] Volume/mute TTS control
 - [ ] Screen region selection for vision (not just full screen)
 - [ ] Window list/close-by-name via GNOME Shell Extension
