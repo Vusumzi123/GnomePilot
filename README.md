@@ -130,9 +130,8 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
 
 | Extension | UUID | Purpose |
 |---|---|---|
-| OS Assistant | `os-assistant@cachyos` | `MoveWindowToWorkspace()` via DBus |
 | Window Calls Extended | `window-calls-extended@hseliger.eu` | `List()` — enumerate open windows |
-| Window Calls | `window-calls@domandoman.xyz` | `Close(id)` — close a window by ID |
+| Window Calls | `window-calls@domandoman.xyz` | `Close(id)`, `MoveToWorkspace(id, workspace)` |
 
 ---
 
@@ -326,9 +325,7 @@ Scores exact/prefix/whole-word/substring matches.
 
 | Extension | EGO link | Purpose |
 |---|---|---|
-| Window Calls Extended | `window-calls-extended@hseliger.eu` | List open windows |
-| Window Calls | `window-calls@domandoman.xyz` | Close windows by ID |
-| OS Assistant (custom) | `os-assistant@cachyos` | Move windows across workspaces |
+| Window Calls | `window-calls@domandoman.xyz` | List, close, and move windows between workspaces |
 
 ### Python Packages (pip, in .venv)
 
@@ -377,10 +374,7 @@ mkdir -p voices
 
 # 6. GNOME Shell Extensions
 # Install from extensions.gnome.org:
-#   - Window Calls Extended
 #   - Window Calls
-# Copy os-assistant@cachyos/ to:
-#   ~/.local/share/gnome-shell/extensions/os-assistant@cachyos/
 # Log out and back in to activate.
 ```
 

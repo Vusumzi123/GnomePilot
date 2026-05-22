@@ -9,14 +9,14 @@
   interface for listing and closing windows by title — far more precise
 - Confirmed working via `gdbus call` tests (see below)
 
-## DBus Interface (Window Calls Extended)
+## DBus Interface (Window Calls)
 
 | Property | Value |
 |---|---|
 | Bus name | `org.gnome.Shell` |
-| Object path | `/org/gnome/Shell/Extensions/WindowsExt` |
-| Interface | `org.gnome.Shell.Extensions.WindowsExt` |
-| Extension UUID | `window-calls-extended@hseliger.eu` |
+| Object path | `/org/gnome/Shell/Extensions/Windows` |
+| Interface | `org.gnome.Shell.Extensions.Windows` |
+| Extension UUID | `window-calls@domandoman.xyz` |
 
 ### Methods
 
