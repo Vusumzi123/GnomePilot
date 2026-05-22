@@ -1,6 +1,6 @@
 """Skill: Package management (search & install via pacman/AUR).
 
-Register with `register(mcp)` -- called automatically by the plugin loader.
+Auto-discovered via @tool() decorator — no manual wiring needed.
 """
 
 import subprocess

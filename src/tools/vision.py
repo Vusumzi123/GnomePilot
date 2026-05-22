@@ -1,9 +1,9 @@
 """Skill: Screen capture and visual analysis.
 
 Uses XDG Desktop Portal for Wayland screenshots and Ollama vision models
-(minicpm-v:8b) for image description.
+for image description.
 
-Register with `register(mcp)` -- called automatically by the plugin loader.
+Auto-discovered via @tool() decorator — no manual wiring needed.
 """
 
 import base64

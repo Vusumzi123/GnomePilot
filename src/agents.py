@@ -14,6 +14,7 @@ from langgraph.prebuilt import create_react_agent
 
 from src.config import (get_model, get_setting, read_prompt, unified_model,
                         num_ctx, debug_enabled, debug_verbose)
+from src.tools import _build_tool_list
 
 
 class Agents:
@@ -51,7 +52,7 @@ class Agents:
 
         self.general_prompt = read_prompt("general", (
             "You are a helpful AI assistant running on CachyOS (Arch Linux with GNOME). "
-        ))
+        )).replace("{tool_descriptions}", _build_tool_list())
         self.vision_prompt = read_prompt("vision", (
             "Describe what's on the screen naturally. "
         ))

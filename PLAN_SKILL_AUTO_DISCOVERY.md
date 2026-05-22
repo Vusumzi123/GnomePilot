@@ -1,5 +1,7 @@
 # Plan: Auto-Discovery Skills (Deferred Registry + Manifests)
 
+**Status: COMPLETE** — all 7 steps implemented. 10 test suites pass.
+
 ## Goal
 
 Eliminate manual wiring when adding a skill.  Currently requires touching 3 files

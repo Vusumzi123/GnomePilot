@@ -18,16 +18,12 @@
     "chat_history_size": 10
   },
   "debug": {
-    "enabled": true,
-    "verbose": true,
+    "enabled": false,
+    "verbose": false,
     "log_dir": "logs",
     "retention_days": 7,
     "rotation": "10 MB"
   },
   "skills": {
-    "application": true,
-    "package_manager": true,
-    "window_manager": true,
-    "vision": true
   }
 }

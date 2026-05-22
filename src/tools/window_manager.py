@@ -4,7 +4,7 @@ Requires the 'os-assistant@cachyos' GNOME Shell Extension to be installed and
 enabled. The extension exports the org.gnome.Shell.Extensions.Assistant DBus
 interface at /org/gnome/Shell/Extensions/Assistant.
 
-Register with `register(mcp)` -- called automatically by the plugin loader.
+Auto-discovered via @tool() decorator — no manual wiring needed.
 """
 
 import dbus

@@ -1,0 +1,4 @@
+[skill]
+name = "vision"
+description = "Capture and describe what is visible on screen"
+prompt_hint = ""
