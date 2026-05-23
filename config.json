@@ -3,7 +3,7 @@
     "orchestrator": "llama3.1:8b",
     "vision": "qwen3.5:2b"
   },
-  "unified_model": "qwen3.5:2b",
+  "unified_model": "qwen3.5:4b",
   "screenshots": {
     "directory": "/tmp/os-assistant/screenshots",
     "max_retention": 10,
@@ -18,8 +18,8 @@
     "chat_history_size": 10
   },
   "debug": {
-    "enabled": false,
-    "verbose": false,
+    "enabled": true,
+    "verbose": true,
     "log_dir": "logs",
     "retention_days": 7,
     "rotation": "10 MB"

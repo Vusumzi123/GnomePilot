@@ -106,8 +106,9 @@ async def test_pipeline_history_accumulates():
 
     # Third call should have history prepended
     msgs = pipeline.history.build_messages("what was that?", include_history=True)
-    assert len(msgs) == 7  # 3 pairs (6) + 1 current = 7
-    assert msgs[0].content == "open firefox"
+    assert len(msgs) == 8  # 1 prefix + 3 pairs (6) + 1 current = 8
+    assert "previous conversation" in msgs[0].content
+    assert msgs[1].content == "open firefox"
     print("  unit: history accumulates: OK")
 
 

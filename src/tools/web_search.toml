@@ -1,0 +1,4 @@
+[skill]
+name = "web_search"
+description = "Search the web via DuckDuckGo for current facts and context"
+prompt_hint = "- Search the web for current information (use sparingly, only when needed)"

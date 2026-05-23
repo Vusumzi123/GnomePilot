@@ -46,17 +46,19 @@ def test_build_messages_with_history():
     h.add_turn("open firefox", "Opened Firefox.")
 
     msgs = h.build_messages("what is up", include_history=True)
-    assert len(msgs) == 5  # 2 pairs + 1 current
+    assert len(msgs) == 6  # 1 prefix + 2 pairs (4) + 1 current
     assert isinstance(msgs[0], HumanMessage)
-    assert msgs[0].content == "hello"
-    assert isinstance(msgs[1], AIMessage)
-    assert msgs[1].content == "Hi there!"
-    assert isinstance(msgs[2], HumanMessage)
-    assert msgs[2].content == "open firefox"
-    assert isinstance(msgs[3], AIMessage)
-    assert msgs[3].content == "Opened Firefox."
-    assert isinstance(msgs[4], HumanMessage)
-    assert msgs[4].content == "what is up"
+    assert "previous conversation" in msgs[0].content
+    assert isinstance(msgs[1], HumanMessage)
+    assert msgs[1].content == "hello"
+    assert isinstance(msgs[2], AIMessage)
+    assert msgs[2].content == "Hi there!"
+    assert isinstance(msgs[3], HumanMessage)
+    assert msgs[3].content == "open firefox"
+    assert isinstance(msgs[4], AIMessage)
+    assert msgs[4].content == "Opened Firefox."
+    assert isinstance(msgs[5], HumanMessage)
+    assert msgs[5].content == "what is up"
     print("  build_messages with history: OK")
 
 
