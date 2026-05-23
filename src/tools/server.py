@@ -9,6 +9,8 @@ companion .toml manifest.  Toggle skills via `skills.<name>` in config.json.
 
 from mcp.server.fastmcp import FastMCP
 
+from src.config import debug_enabled, debug_verbose, debug_log_dir, \
+                       debug_retention_days, debug_rotation
 from . import register_all
 
 mcp = FastMCP("CachyOS Assistant Tools")
@@ -30,6 +32,14 @@ def reload_tools() -> None:
 
 def main() -> None:
     """Run the MCP server on stdio (spawned by the Agents class as a subprocess)."""
+    if debug_enabled():
+        from src.debug import configure
+        configure(
+            verbose=debug_verbose(),
+            log_dir=debug_log_dir(),
+            retention_days=debug_retention_days(),
+            rotation=debug_rotation(),
+        )
     mcp.run(transport="stdio")
 
 

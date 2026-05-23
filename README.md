@@ -181,6 +181,9 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
 | `orchestrator.num_ctx` | int | `8192` | Context window size (`ollama num_ctx`) |
 | `orchestrator.chat_history_size` | int | `10` | Conversation turns to remember (0 = disabled) |
 | `orchestrator.recursion_limit` | int | `10` | Max LLM-tool steps per agent call |
+| `browser.headless` | bool | `true` | Invisible browser (false = visible window) |
+| `browser.engine` | str | `"chromium"` | Playwright browser engine |
+| `browser.cdp_port` | int | `9222` | Chrome DevTools Protocol port for browser control |
 | `screenshots.directory` | string | `/tmp/os-assistant/screenshots` | Screenshot storage |
 | `screenshots.max_retention` | int | `10` | Max screenshots (FIFO) |
 | `screenshots.unload_before_analysis` | bool | `true` | Unload other models before vision |

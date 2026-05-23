@@ -15,6 +15,11 @@ DEFAULT_CONFIG = {
         "chat_history_size": 10,
         "recursion_limit": 10,
     },
+    "browser": {
+        "headless": True,
+        "engine": "chromium",
+        "cdp_port": 9222,
+    },
     "skills": {
         "application": True,
         "package_manager": True,
@@ -141,3 +146,18 @@ def debug_rotation() -> str:
 def skill_enabled(name: str) -> bool:
     """Whether a skill module should be loaded. Defaults to True."""
     return bool(load_config().get("skills", {}).get(name, True))
+
+
+def browser_headless() -> bool:
+    """Headless mode for browser automation (default True)."""
+    return bool(load_config().get("browser", {}).get("headless", True))
+
+
+def browser_engine() -> str:
+    """Browser engine for Playwright (default 'chromium')."""
+    return load_config().get("browser", {}).get("engine", "chromium")
+
+
+def browser_cdp_port() -> int:
+    """Chrome DevTools Protocol debug port for browser control (default 9222)."""
+    return int(load_config().get("browser", {}).get("cdp_port", 9222))

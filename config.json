@@ -3,7 +3,7 @@
     "orchestrator": "llama3.1:8b",
     "vision": "qwen3.5:2b"
   },
-  "unified_model": "qwen3.5:2b",
+  "unified_model": "qwen3.5:9b",
   "screenshots": {
     "directory": "/tmp/os-assistant/screenshots",
     "max_retention": 10,
@@ -17,13 +17,18 @@
     "num_ctx": 8192,
     "chat_history_size": 10
   },
-  "debug": {
-    "enabled": false,
-    "verbose": false,
-    "log_dir": "logs",
-    "retention_days": 7,
-    "rotation": "10 MB"
-  },
-  "skills": {
+    "debug": {
+        "enabled": true,
+        "verbose": true,
+        "log_dir": "logs",
+        "retention_days": 7,
+        "rotation": "10 MB"
+    },
+    "browser": {
+        "headless": false,
+        "engine": "chromium",
+        "cdp_port": 9222
+    },
+    "skills": {
   }
 }
