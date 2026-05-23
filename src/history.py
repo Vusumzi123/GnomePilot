@@ -48,6 +48,11 @@ class History:
         """
         messages: list = []
         if include_history and self._turns and self.max_turns > 0:
+            messages.append(HumanMessage(content=(
+                "Below is our previous conversation — context only. "
+                "Do NOT repeat or re-execute any tool calls shown below. "
+                "Reply to my most recent message only."
+            )))
             for turn in self._turns[-self.max_turns:]:
                 messages.append(HumanMessage(content=turn["user"]))
                 messages.append(AIMessage(content=turn["assistant"]))

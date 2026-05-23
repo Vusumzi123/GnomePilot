@@ -1,6 +1,6 @@
 # Plan: Web Search Skill
 
-**Status: DRAFT**
+**Status: DONE**
 
 ## Goal
 
