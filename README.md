@@ -34,7 +34,7 @@ main.py ──► Pipeline ──► Enrich ──► Route ──► Build ─�
 
 | Agent | Tools | Model | Description |
 |---|---|---|---|
-| **General** | open/close apps, search/install packages, move windows, search the web | orchestrator model | Handles non-vision tasks and casual chat |
+| **General** | open/close apps, search packages & write install guides, move windows, search the web | orchestrator model | Handles non-vision tasks and casual chat |
 | **Vision** | capture & analyze screen | vision model | Screenshot via XDG Desktop Portal, analysis via Ollama VLM |
 
 ### Routing
@@ -80,6 +80,7 @@ a recursion limit of 5, this prevents infinite retry loops.
 ```
 GnomePilot/
 ├── config.json                  # All configuration
+├── install_guides/              # Generated install guide MD files
 ├── prompts/
 │   ├── general.md               # General agent system prompt
 │   ├── vision.md                # Vision agent system prompt
@@ -103,20 +104,22 @@ GnomePilot/
 │       ├── application.py       # Open/close desktop apps
 │       ├── desktop_index.py     # .desktop file scanner + resolve
 │       ├── fuzzy_match.py       # Generic string scorer (reusable)
-│       ├── package_manager.py   # Search/install via pacman + AUR (yay)
+│       ├── package_manager.py   # Search packages & write install guides (pacman + AUR/yay)
 │       ├── vision.py            # Screenshot capture + Ollama analysis
 │       ├── web_search.py        # DuckDuckGo web search
 │       └── window_manager.py    # Move windows via GNOME Shell Extension
-├── test_agents.py               # Agent lifecycle tests
-├── test_close.py                # DBus window close tests
-├── test_executor.py             # Executor chain + dedup tests
-├── test_extractor.py            # Response extraction tests
-├── test_formatter.py            # Formatter regex tests
-├── test_history.py              # History management tests
-├── test_pipeline.py             # Full pipeline integration tests
-├── test_router.py               # Router regex + LLM tests
-├── test_skill_registry.py       # Deferred @tool() registry tests
-├── run_tests.py                 # Dynamic test runner
+├── tests/
+│   ├── test_agents.py               # Agent lifecycle tests
+│   ├── test_close.py                # DBus window close tests
+│   ├── test_executor.py             # Executor chain + dedup tests
+│   ├── test_extractor.py            # Response extraction tests
+│   ├── test_formatter.py            # Formatter regex tests
+│   ├── test_history.py              # History management tests
+│   ├── test_pipeline.py             # Full pipeline integration tests
+│   ├── test_router.py               # Router regex + LLM tests
+│   ├── test_skill_manifest.py       # TOML manifest tests
+│   ├── test_skill_registry.py       # Deferred @tool() registry tests
+│   └── test_web_search.py           # DuckDuckGo web search tests
 ├── requirements.txt             # Python dependencies
 ├── setup.sh                     # Full installer
 ├── PLAN_REFACTOR_PIPELINE.md    # Pipeline architecture design
@@ -160,6 +163,9 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
   "formatter": {
     "enabled": true
   },
+  "install_guides": {
+    "directory": "install_guides"
+  },
   "debug": {
     "enabled": false,
     "verbose": false,
@@ -185,6 +191,7 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
 | `screenshots.directory` | string | `/tmp/os-assistant/screenshots` | Screenshot storage |
 | `screenshots.max_retention` | int | `10` | Max screenshots (FIFO) |
 | `screenshots.unload_before_analysis` | bool | `true` | Unload other models before vision |
+| `install_guides.directory` | string | `install_guides` | Output directory for generated install guide MD files |
 | `formatter.enabled` | bool | `true` | Enable regex response formatter |
 | `debug.enabled` | bool | `false` | Master toggle for debug logging |
 | `debug.verbose` | bool | `false` | Full LLM prompt dumps when true |
@@ -211,7 +218,7 @@ Each skill module in `src/tools/` can be toggled on/off:
 | Skill | Module | Tools provided |
 |---|---|---|---|
 | `application` | `application.py` | Open/close desktop apps (DBus window close with fuzzy matching) |
-| `package_manager` | `package_manager.py` | Search (pacman/AUR) + install packages |
+| `package_manager` | `package_manager.py` | Search (pacman/AUR) + write install guides (does NOT install) |
 | `vision` | `vision.py` | Screenshot capture + visual analysis |
 | `web_search` | `web_search.py` | DuckDuckGo web search for current facts |
 | `window_manager` | `window_manager.py` | Move windows between workspaces |
@@ -345,16 +352,33 @@ Scores exact/prefix/whole-word/substring matches.
 | `ddgs` | DuckDuckGo web search |
 | `html2text` | HTML-to-text conversion |
 
+## Quick start
+
+```bash
+# 1. Install Python dependencies in a virtual environment
+chmod +x install_deps.sh
+./install_deps.sh
+
+# 2. Run the assistant
+source .venv/bin/activate
+python -m src.main
+```
+
+Make sure Ollama is running (`systemctl status ollama`) and required models are pulled
+(see [Full installation](#full-installation) below).
+
 ---
 
-## Installation
+## Full installation
+
+### Automated (all-in-one)
 
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-Or manually:
+### Step by step
 
 ```bash
 # 1. System packages
@@ -364,7 +388,7 @@ sudo pacman -S --needed python python-pip python-dbus python-gobject \
 # 2. Start Ollama
 sudo systemctl enable --now ollama
 
-# 3. Python venv
+# 3. Python venv & dependencies
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip

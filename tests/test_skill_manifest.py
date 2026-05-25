@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.tools import _read_manifest, _build_tool_list, skill_summary
 
@@ -21,7 +21,7 @@ def test_all_enabled_builds_tool_list():
     """With all skills enabled, tool list includes app/pkg/window hints."""
     lines = _build_tool_list()
     assert "Open and close applications" in lines
-    assert "Search and install" in lines
+    assert "Search packages" in lines
     assert "Move windows" in lines
     # Vision has empty prompt_hint — should not appear
     assert "capture" not in lines.lower()
@@ -31,14 +31,14 @@ def test_all_enabled_builds_tool_list():
 def test_disabled_skill_omitted():
     """Temporarily disable package_manager, verify it's dropped."""
     import json
-    config_path = Path(__file__).parent / "config.json"
+    config_path = Path(__file__).resolve().parent.parent / "config.json"
     original = config_path.read_text()
     cfg = json.loads(original)
     cfg["skills"]["package_manager"] = False
     config_path.write_text(json.dumps(cfg, indent=2))
 
     lines = _build_tool_list()
-    assert "Search and install" not in lines
+    assert "Search packages" not in lines
     assert "Open and close applications" in lines
     assert "Move windows" in lines
     print("  disabled skill omitted: OK")
@@ -86,7 +86,7 @@ def test_prompt_rendering():
     prompt = agents.general_prompt
     assert "{tool_descriptions}" not in prompt, "Placeholder not replaced"
     assert "Open and close applications" in prompt
-    assert "Search and install" in prompt
+    assert "Search packages" in prompt
     assert "Move windows" in prompt
     print(f"  prompt rendered ({len(prompt)} chars): OK")
     # Show the tool list portion

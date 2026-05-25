@@ -7,7 +7,7 @@ Tests gracefully handle the extension being unavailable.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.tools.application import _close_application
 from src.tools.fuzzy_match import best as best_match
