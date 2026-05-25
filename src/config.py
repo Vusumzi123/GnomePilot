@@ -21,6 +21,9 @@ DEFAULT_CONFIG = {
         "window_manager": True,
         "vision": True,
     },
+    "install_guides": {
+        "directory": "install_guides",
+    },
 }
 
 
@@ -73,6 +76,17 @@ def screenshot_dir() -> Path:
     cfg = load_config()
     path = cfg.get("screenshots", {}).get("directory", "/tmp/os-assistant/screenshots")
     return Path(path)
+
+
+def install_guides_dir() -> Path:
+    """Output directory for generated install guide MD files."""
+    cfg = load_config()
+    path = cfg.get("install_guides", {}).get("directory", "install_guides")
+    p = Path(path)
+    if not p.is_absolute():
+        p = PROJECT_DIR / p
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def screenshot_retention() -> int:

@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.extractor import Extractor
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
@@ -94,14 +94,14 @@ def test_tool_calls_multiple():
         _make_ai("", tool_calls=[
             {"name": "tool_install_package", "args": {"package_name": "htop"}, "id": "tc_2"},
         ]),
-        _make_tool("Successfully installed htop.", name="tool_install_package"),
+        _make_tool("install_guides/htop-20260525.md", name="tool_install_package"),
     ]
     calls = Extractor.tool_calls(msgs)
     assert len(calls) == 2
     assert calls[0]["name"] == "tool_search_packages"
     assert calls[1]["name"] == "tool_install_package"
     assert calls[0]["result"] == "Found htop in official repos."
-    assert calls[1]["result"] == "Successfully installed htop."
+    assert "install_guides/" in calls[1]["result"]
     print("  tool_calls multiple: OK")
 
 

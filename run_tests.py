@@ -27,7 +27,7 @@ _LOGURU_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "SUCCESS")
 def discover_tests() -> list[Path]:
     """Return all test_*.py files, unit tests first."""
     tests: list[Path] = []
-    for f in sorted(PROJECT_DIR.glob("test_*.py")):
+    for f in sorted((PROJECT_DIR / "tests").glob("test_*.py")):
         if f.name != Path(__file__).name:
             tests.append(f)
     tests.sort(key=lambda p: (p.stem in _INTEGRATION_TESTS, p.stem))

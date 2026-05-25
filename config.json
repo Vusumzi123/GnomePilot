@@ -24,6 +24,9 @@
     "retention_days": 7,
     "rotation": "10 MB"
   },
+  "install_guides": {
+    "directory": "install_guides"
+  },
   "skills": {
   }
 }
