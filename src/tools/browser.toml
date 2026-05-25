@@ -1,4 +1,4 @@
 [skill]
 name = "browser"
-description = "Control a web browser — open pages, search, tabs, read content"
-prompt_hint = "- Open URLs in the user's default browser, control Chrome tabs and read pages via CDP"
+description = "Open URLs in system browser and read web page content"
+prompt_hint = "- Open URLs in the user's default browser. Read page content via HTTP (no browser tab required)."

@@ -24,11 +24,6 @@
         "retention_days": 7,
         "rotation": "10 MB"
     },
-    "browser": {
-        "headless": false,
-        "engine": "chromium",
-        "cdp_port": 9222
-    },
     "skills": {
   }
 }

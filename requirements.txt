@@ -8,4 +8,5 @@ ollama>=0.6.0
 Pillow>=10.0.0
 loguru>=0.7.0
 ddgs>=9
-playwright>=1.50
+requests>=2.32
+html2text>=2024.2
