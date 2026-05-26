@@ -24,6 +24,36 @@ _INTEGRATION_TESTS = {"test_agents", "test_executor", "test_pipeline", "test_clo
 _LOGURU_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "SUCCESS")
 
 
+def run_pip_audit(quiet: bool = False) -> bool:
+    """Run pip-audit on requirements.txt. Returns True if clean or unavailable."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip_audit", "--requirement",
+             str(PROJECT_DIR / "requirements.txt")],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            print(f"│ {'─' * 56}")
+            for line in result.stdout.split("\n"):
+                if line.strip():
+                    print(f"│ ⚠  {line.strip()}")
+            for line in result.stderr.split("\n"):
+                if line.strip():
+                    print(f"│ ⚠  {line.strip()}")
+            print(f"│ {'─' * 56}")
+            return False
+        if not quiet:
+            print(f"│ pip-audit: no known vulnerabilities")
+        return True
+    except FileNotFoundError:
+        if not quiet:
+            print(f"│ pip-audit not installed — skipping")
+        return True
+    except subprocess.TimeoutExpired:
+        print(f"│ pip-audit timed out — skipping")
+        return True
+
+
 def discover_tests() -> list[Path]:
     """Return all test_*.py files, unit tests first."""
     tests: list[Path] = []
@@ -77,7 +107,16 @@ def main():
     parser.add_argument("--integration", action="store_true", help="Run only integration tests")
     parser.add_argument("--timeout", type=int, default=120, help="Seconds per test (default 120)")
     parser.add_argument("--quiet", action="store_true", help="Show only summary, not per-test output")
+    parser.add_argument("--audit", action="store_true", help="Run pip-audit on dependencies before tests")
     args = parser.parse_args()
+
+    if args.audit:
+        print(">>> Dependency audit (pip-audit) ...")
+        audit_ok = run_pip_audit(quiet=args.quiet)
+        if not audit_ok:
+            print(">>> VULNERABILITIES FOUND — run `pip install -r requirements.txt` to upgrade.")
+            return 1
+        print()
 
     tests = discover_tests()
 

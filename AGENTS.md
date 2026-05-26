@@ -97,7 +97,7 @@ Integration tests: `{"test_agents", "test_executor", "test_pipeline", "test_clos
 - **Install guides**: `tool_install_package` does NOT install packages. It generates an MD file in `install_guides/` with pacman/yay commands the user can run manually. Configurable via `install_guides.directory`.
 - **Recursion limit**: Configurable via `orchestrator.recursion_limit` (default 10). `GraphRecursionError` caught in Pipeline with user-friendly message
 - **Ollama unload**: `ollama.generate(model=name, prompt="", keep_alive=0)` triggers `done_reason:"unload"` — frees VRAM
-- **MCP subprocess env**: `MultiServerMCPClient` needs `env=dict(os.environ)` explicitly
+- **MCP subprocess env**: Whitelisted to `MCP_ENV_KEYS` in `src/agents.py`. GUI apps launched via `subprocess.Popen` inside the subprocess inherit this env — must include display vars (`WAYLAND_DISPLAY`, `DISPLAY`, `XDG_RUNTIME_DIR`). Before adding/removing keys, trace the full chain: MCP subprocess → tool function → Popen/DBus child. A unit test (`test_mcp_required_env_keys`) catches missing keys.
 - **Prompts**: Editable Markdown in `prompts/` — `general.md`, `vision.md`, `router.md`. No code changes needed.
 - **Formatter**: Strips emojis, zero-width chars, tool-call JSON artefacts, markdown fences via regex
 

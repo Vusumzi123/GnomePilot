@@ -11,7 +11,7 @@ from pathlib import Path
 import dbus
 from gi.repository import Gio
 
-from .desktop_index import resolve
+from .desktop_index import resolve, _read_exec_line, validate_desktop_file
 from .fuzzy_match import best as best_match
 from ._registry import tool
 
@@ -28,6 +28,7 @@ def _open_application(app_name: str) -> str:
     the MCP server's JSON-RPC channel (critical for Chromium-based PWAs that
     print "Opening in existing browser session." on launch).
 
+    Validates .desktop file ownership/permissions before executing.
     Falls back to Gio.DesktopAppInfo.launch() only when Exec= is unavailable.
     """
     desktop_file = resolve(app_name)
@@ -36,6 +37,12 @@ def _open_application(app_name: str) -> str:
 
     exec_line = _read_exec_line(desktop_file)
     if exec_line:
+        if not validate_desktop_file(desktop_file):
+            return (
+                f"Safety check failed for '{app_name}': "
+                f"the .desktop file '{desktop_file}' has unsafe permissions "
+                f"or ownership. Please verify the file manually."
+            )
         try:
             subprocess.Popen(
                 shlex.split(exec_line), start_new_session=True,
@@ -61,19 +68,6 @@ def _open_application(app_name: str) -> str:
         return f"Failed to launch {app_name} via DesktopAppInfo."
 
     return f"Failed to load desktop file for '{app_name}' (no valid Exec line)."
-
-
-def _read_exec_line(path: Path) -> str | None:
-    """Extract the Exec= value from a .desktop file, stripping field codes."""
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("Exec="):
-                raw = line.split("=", 1)[1].strip()
-                return raw.replace("%U", "").replace("%u", "").replace("%F", "").replace("%f", "").strip()
-    except Exception:
-        pass
-    return None
 
 
 def _close_application(app_name: str) -> str:

@@ -76,16 +76,19 @@ def test_fuzzy_match_windows():
 def test_close_real_app():
     """End-to-end: close a real app if extension is available."""
     result = _close_application("zzz_nonexistent_app_xyzzy")
+    assert isinstance(result, str) and len(result) > 0
     if "not available" in result.lower() or "unable to" in result.lower():
         print("  SKIP: Window Calls Extended extension not available")
         print("    Install window-calls-extended@hseliger.eu to test real closing")
-    elif "No open window" in result:
-        print(f"  extension working — window list returned")
-        print(f"  (no real app closed in this test, but DBus works)")
+        return
+    if "No open window" in result:
+        assert "Currently open windows" in result or "no windows" in result.lower()
+        print("  extension working — window list returned")
     elif "Closed" in result:
+        assert "Closed" in result
         print("  real close succeeded!")
     else:
-        print(f"  result: {result[:200]}")
+        print(f"  unexpected result: {result[:200]}")
     print()
 
 
