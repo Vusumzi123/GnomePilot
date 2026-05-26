@@ -22,7 +22,7 @@ from gi.repository import GLib
 from PIL import Image
 
 from src.config import get_model, screenshot_dir, screenshot_retention, unload_before_analysis
-from ._registry import tool
+from .._registry import tool
 
 
 SCREENSHOT_TIMEOUT = 20.0

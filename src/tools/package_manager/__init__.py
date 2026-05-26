@@ -8,7 +8,7 @@ import os
 import re
 import subprocess
 
-from ._registry import tool
+from .._registry import tool
 
 
 def _search_packages(query: str) -> str:

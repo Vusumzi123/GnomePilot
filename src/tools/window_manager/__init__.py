@@ -10,8 +10,8 @@ import json
 
 import dbus
 
-from ._registry import tool
-from .fuzzy_match import best as best_match
+from .._registry import tool
+from ..fuzzy_match import best as best_match
 
 _WIN_BUS = "org.gnome.Shell"
 _WIN_PATH = "/org/gnome/Shell/Extensions/Windows"

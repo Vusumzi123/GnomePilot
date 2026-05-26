@@ -35,7 +35,7 @@ def test_disabled_skill_omitted():
     def mock_skill(name):
         return name != "package_manager"
 
-    with patch("src.tools.skill_enabled", side_effect=mock_skill):
+    with patch("src.tools._is_skill_enabled", side_effect=mock_skill):
         lines = _build_tool_list()
         assert "Search packages" not in lines
         assert "Open and close applications" in lines
@@ -92,6 +92,23 @@ def test_prompt_rendering():
             print(f"    {line}")
 
 
+def test_per_skill_config_enabled_false():
+    """Skill's own config.toml with enabled=false excludes it (no config.json needed)."""
+    from unittest.mock import patch
+    from src.tools import _read_skill_config, _build_tool_list, _is_skill_enabled
+
+    def mock_config(name):
+        return {"enabled": name != "application"}
+
+    with patch("src.tools._read_skill_config", side_effect=mock_config):
+        assert not _is_skill_enabled("application")
+        assert _is_skill_enabled("vision")
+        lines = _build_tool_list()
+        assert "Open and close applications" not in lines
+        assert "Move windows" in lines
+    print("  per-skill config.toml disabled: OK")
+
+
 if __name__ == "__main__":
     test_manifests_exist()
     test_all_enabled_builds_tool_list()
@@ -99,6 +116,7 @@ if __name__ == "__main__":
     test_skill_summary()
     test_missing_toml_graceful()
     test_vision_empty_hint()
+    test_per_skill_config_enabled_false()
     test_prompt_rendering()
     print()
     print("=" * 50)

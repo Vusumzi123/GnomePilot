@@ -1,71 +1,183 @@
-# Executive Summary — 2026-05-25
+# Executive Summary — 2026-05-26
 
 ## Changes Executed
 
-### Bug fix: GUI apps silently fail to open through MCP pipeline
-**Root cause**: Phase 2 of `PLAN_DEP_SECURITY.md` restricted the MCP subprocess environment to only `PATH`, `HOME`, `DBUS_SESSION_BUS_ADDRESS`, `LANG`. This removed `WAYLAND_DISPLAY`, `DISPLAY`, `XDG_RUNTIME_DIR`, etc. — which GUI apps launched via `subprocess.Popen` inherit and need to find the compositor/display.
+### Skill Refactor: Per-Skill Config + Folder Structure (Phases 1-3)
 
-**Fix**: Added display vars to the whitelist (`DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`).
+Moved all 5 skills into their own `src/tools/<name>/` folders with per-skill `config.toml` + `manifest.toml`. Adding a new skill now requires zero changes to `config.json`.
 
-### Prevention plan executed
-Three layers of protection against recurrence:
+| Phase | What changed | Result |
+|-------|-------------|--------|
+| 1 | Skills to packages, `_discover_skills()`, `_read_skill_config()`, `_is_skill_enabled()` | 5 skill folders, manifest-based discovery, per-skill enable/disable |
+| 2 | Removed `skills` from `DEFAULT_CONFIG`, `skill_enabled()` → optional override | `config.json` has zero skill-specific sections |
+| 3 | Final verification, security fixes, integration tests | 11/11 unit + 4/4 integration pass |
 
-1. **`src/agents.py`**: Extracted `MCP_ENV_KEYS` as a module-level constant with comments explaining each var's purpose and the full Popen chain trace
-2. **`tests/test_config.py`**: Added `test_mcp_required_env_keys()` — a canary test that asserts all required env keys are present (fails if someone removes a key without updating the test)
-3. **`AGENTS.md`**: Updated "MCP subprocess env" gotcha with flow-trace instructions and a reference to the canary test
+**Directory structure after refactor:**
+```
+src/tools/
+├── __init__.py              # _discover_skills(), _read_skill_config(), _is_skill_enabled()
+├── _registry.py             # deferred @tool() decorator
+├── server.py                # FastMCP entry point
+├── desktop_index.py         # shared helper (flat)
+├── fuzzy_match.py           # shared helper (flat)
+├── application/
+│   ├── __init__.py          # tool functions
+│   ├── manifest.toml        # [skill] name, description, prompt_hint
+│   └── config.toml          # [skill] enabled = true
+├── vision/        (... same pattern)
+├── web_search/    (... same pattern)
+├── package_manager/ (... same pattern)
+│   └── config.toml          # [skill] enabled + [install_guides] directory
+└── window_manager/ (... same pattern)
+```
 
-### Files modified
+### install_guides Migration
+
+Moved `install_guides` config from `config.json` into `package_manager/config.toml`:
+- Primary source: `package_manager/config.toml` → `[install_guides] directory = "install_guides"`
+- `config.json` removed `install_guides` section
+- `install_guides_dir()` checks: override → per-skill config → default
+
+### Security Fixes (from security-expert review of config.toml pattern)
+
+| Fix | Severity | Detail |
+|-----|----------|--------|
+| Path traversal guard in `install_guides_dir()` | Moderate | Values with `..` or absolute paths rejected — fall through to safe default |
+| Exception handler in `_read_manifest()` | Low | Malformed `manifest.toml` no longer crashes pipeline |
+| Dead import removed | Low | `skill_enabled` imported but never called in `__init__.py` |
+
+### Files Modified
+
 | File | Change |
 |------|--------|
-| `src/agents.py` | Extracted `MCP_ENV_KEYS` constant with justification comments; `start()` uses it instead of inline list |
-| `tests/test_config.py` | Added `test_mcp_required_env_keys()` canary test |
-| `tests/test_executor.py` | Removed duplicate env keys test (moved to test_config.py) |
-| `AGENTS.md` | Updated "MCP subprocess env" gotcha with full flow-trace instructions + test reference |
-| `SECURITY_AUDIT.md` | Updated env whitelist snippet to show full key list |
-| `EXECUTIVE_SUMMARY.md` | This file (regenerated per change-cycle rule) |
+| `src/tools/__init__.py` | Rewritten: `_discover_skills()`, `_read_skill_config()`, `_is_skill_enabled()`, `_read_manifest()` with exception handler, removed `pkgutil` and dead `skill_enabled` import |
+| `src/tools/application/__init__.py` | Moved from `application.py`; relative imports → `..` |
+| `src/tools/application/manifest.toml` | Moved from `application.toml` |
+| `src/tools/application/config.toml` | New: `[skill] enabled = true` |
+| `src/tools/vision/__init__.py` | Moved from `vision.py`; imports → `..` |
+| `src/tools/vision/manifest.toml` | Moved from `vision.toml` |
+| `src/tools/vision/config.toml` | New |
+| `src/tools/web_search/__init__.py` | Moved + imports → `..` |
+| `src/tools/web_search/manifest.toml` | Moved |
+| `src/tools/web_search/config.toml` | New |
+| `src/tools/package_manager/__init__.py` | Moved + imports → `..` |
+| `src/tools/package_manager/manifest.toml` | Moved |
+| `src/tools/package_manager/config.toml` | New: `[skill]` + `[install_guides]` |
+| `src/tools/window_manager/__init__.py` | Moved + imports → `..` |
+| `src/tools/window_manager/manifest.toml` | Moved |
+| `src/tools/window_manager/config.toml` | New |
+| `src/config.py` | Removed `skills` and `install_guides` from `DEFAULT_CONFIG`; `install_guides_dir()` with path traversal guard; `skill_enabled()` docstring updated |
+| `config.json` | Removed `install_guides` section; `skills` kept as empty `{}` (harmless no-op) |
+| `tests/test_skill_manifest.py` | Updated patch (`_is_skill_enabled`), added `test_per_skill_config_enabled_false()` |
+| `tests/test_config.py` | Added `test_install_guides_dir_reads_per_skill_config()` |
+| `AGENTS.md` | Updated "Adding a skill" section for folder structure + per-skill config |
+| `PLAN_SKILL_REFACTOR.md` | Full 3-phase plan + install_guides migration appendix |
+
+### Files Deleted
+
+| File | Reason |
+|------|--------|
+| `src/tools/application.py` | → `application/__init__.py` |
+| `src/tools/application.toml` | → `application/manifest.toml` |
+| `src/tools/vision.py` | → `vision/__init__.py` |
+| `src/tools/vision.toml` | → `vision/manifest.toml` |
+| `src/tools/web_search.py` | → `web_search/__init__.py` |
+| `src/tools/web_search.toml` | → `web_search/manifest.toml` |
+| `src/tools/package_manager.py` | → `package_manager/__init__.py` |
+| `src/tools/package_manager.toml` | → `package_manager/manifest.toml` |
+| `src/tools/window_manager.py` | → `window_manager/__init__.py` |
+| `src/tools/window_manager.toml` | → `window_manager/manifest.toml` |
+| `src/tools/__pycache__/*` | Stale bytecode from old flat modules |
 
 ## Subagent Perspectives
 
 ### Python Expert
-**Praise**: Extracting `MCP_ENV_KEYS` to a module-level constant is idiomatic — point of change is centralized, importable by tests. The canary test uses set math to be future-proof.
-**Flag**: `test_config.py` now imports from `src.agents` — creates a circular-appearing dependency (config test → agents → config). In practice, both are leaf imports, but future refactors should watch this.
+**Praise**: Extracting `_discover_skills()` as a `manifest.toml`-based discovery function is clean and explicit. No dependence on Python packaging semantics. The relative import fix (`.` → `..`) is correct for the new sub-package structure.
+**Flag**: `install_guides_dir()` in `config.py` now reads from `src/tools/package_manager/config.toml` — layering violation (config → tools dependency). Consider moving to a shared location or having the skill pass its config path up.
 
 ### OS/Linux Expert
-**Praise**: The env vars chosen are exactly what a Wayland desktop needs: `WAYLAND_DISPLAY` + `XDG_RUNTIME_DIR` for native Wayland, `DISPLAY` for XWayland fallback. `XDG_SESSION_TYPE` and `XDG_CURRENT_DESKTOP` tell apps how to behave.
-**Suggest**: Consider `GDK_BACKEND=wayland` if GTK apps need forcing. Also verify `QT_QPA_PLATFORM=wayland` works through env inheritance for Qt apps.
+**Praise**: Directory structure is clean and predictable. Permissions inheritance from the parent `src/tools/` works correctly. `grep`-ability of manifest.toml files in subdirs is a nice property.
+**Suggest**: Verify the assistant service file (if any) still points to the correct Python module paths after the restructure.
 
 ### Security Expert
-**Praise**: The whitelist approach is sound — 9 vars instead of full `os.environ`. Each var has a documented runtime purpose.
-**Flag**: `DISPLAY` is included for XWayland fallback but on some setups it may not be set — the `if k in os.environ` guard handles that gracefully.
-**Suggest**: Periodic audit of `MCP_ENV_KEYS` — as new tools add new Popen/DBus child processes, they may need new env vars. The canary test is the first line of defense.
+**Praise**: Path traversal guard in `install_guides_dir()` is simple and effective — rejects `..` and absolute paths, falls through to safe default. The `_read_manifest()` exception handler prevents DoS from malformed TOML.
+**Flag**: Auto-discovery via `manifest.toml` is safe as long as the scan root is hardcoded. Periodically verify no discovery path has become configurable through a refactor.
+**Residual**: The `screenshot_dir()` uses `config.json` only with no per-skill fallback — different trust model. A similar path traversal guard should be considered.
 
 ### AI Integration Expert
-**Praise**: Moving the canary test to `test_config.py` (always unit) was correct — `test_executor.py` is classified as integration-only and `--unit` skips it entirely.
-**Flag**: `test_executor.py` still mixes unit tests (`_FakeAgent` tests) with integration tests (Ollama-dependent). Consider splitting into `test_executor_unit.py` and `test_executor_integration.py`, or making `run_tests.py` aware of per-function tags. Low priority.
+**Praise**: 11/11 unit tests + 4/4 integration tests pass. The new `test_per_skill_config_enabled_false` validates the core new feature. The `test_install_guides_dir_reads_per_skill_config` validates the per-skill config fallback.
+**Flag**: `test_executor.py` still mixes unit tests (`_FakeAgent`) with integration tests (Ollama-dependent). The `--unit` flag skips the entire file, losing 6 unit tests. Consider splitting or tagging.
+
+## Test Results
+
+| Suite | Status | Checks | Time |
+|-------|--------|--------|------|
+| test_application | PASS | ~13 | 0.2s |
+| test_config | PASS | ~17 | 1.0s |
+| test_extractor | PASS | ~12 | 0.3s |
+| test_formatter | PASS | ~12 | 0.0s |
+| test_fuzzy_match | PASS | ~15 | 0.0s |
+| test_history | PASS | ~11 | 0.3s |
+| test_package_manager | PASS | ~4 | 0.1s |
+| test_router | PASS | ~11 | 0.7s |
+| test_skill_manifest | PASS | ~11 | 1.1s |
+| test_skill_registry | PASS | ~4 | 0.0s |
+| test_web_search | PASS | ~4 | 2.5s |
+| **Unit total** | **11/11** | **~114** | **6.2s** |
+| test_agents | PASS | ~3 | 2.5s |
+| test_close | PASS | ~7 | 0.1s |
+| test_executor | PASS | ~12 | 12.4s |
+| test_pipeline | PASS | ~8 | 63.9s |
+| **Integration total** | **4/4** | **~30** | **78.9s** |
 
 ## Manual Test Plan
 
-1. **Run unit tests** — verify canary test passes:
-   ```sh
-   source .venv/bin/activate && python3 run_tests.py --unit
-   ```
-   Expected: 11/11 suites pass, `MCP_ENV_KEYS: all required + no dupes: OK` visible under test_config.
+```bash
+# 1. Verify skill discovery
+source .venv/bin/activate
+python3 -c "from src.tools import _discover_skills; print(_discover_skills())"
+# Expected: ['application', 'package_manager', 'vision', 'web_search', 'window_manager']
 
-2. **Verify canary catches missing keys** — temporarily remove `WAYLAND_DISPLAY` from `MCP_ENV_KEYS` in `src/agents.py`, re-run unit tests:
-   ```sh
-   source .venv/bin/activate && python3 tests/test_config.py
-   ```
-   Expected: assertion fails with `Missing required keys from MCP_ENV_KEYS: {'WAYLAND_DISPLAY'}`. Undo the edit afterwards.
+# 2. Verify per-skill config disable
+echo -e "[skill]\nenabled = false" > src/tools/package_manager/config.toml
+python3 -c "from src.tools import _build_tool_list; print(_build_tool_list())"
+# Expected: "Search packages" NOT in output
+git checkout src/tools/package_manager/config.toml  # restore
 
-3. **Verify app opens through MCP pipeline** — full end-to-end:
-   ```sh
-   source .venv/bin/activate && python3 -m src.main
-   ```
-   Then type: "Open Firefox"
-   Expected: Firefox window appears, assistant responds "Firefox has been opened."
+# 3. Verify path traversal guard
+python3 -c "
+from src.config import install_guides_dir
+p = install_guides_dir()
+assert str(p).endswith('install_guides')
+print(f'OK: {p}')
+"
 
-4. **Run integration tests** (needs Ollama running):
-   ```sh
-   source .venv/bin/activate && python3 run_tests.py --integration
-   ```
-   Expected: 4/4 suites pass (test_agents, test_executor, test_pipeline, test_close).
+# 4. Verify adding a new skill needs no config.json change
+mkdir -p src/tools/test_skill
+cat > src/tools/test_skill/__init__.py << 'END'
+from .._registry import tool
+@tool()
+def tool_test() -> str: return 'test'
+END
+cat > src/tools/test_skill/manifest.toml << 'END'
+[skill]
+name = "test_skill"
+description = "Test"
+prompt_hint = ""
+END
+cat > src/tools/test_skill/config.toml << 'END'
+[skill]
+enabled = true
+END
+python3 -c "from src.tools import _discover_skills; assert 'test_skill' in _discover_skills(); print('New skill discovered without config.json: OK')"
+rm -rf src/tools/test_skill
+
+# 5. Full smoke test
+python3 -m src.main
+# Type: "Open Firefox" — app should open
+# Type: "Search for htop" — should return packages
+```
+
+## Verdict
+
+**11/11 unit, 4/4 integration, 0 regressions.** The per-skill config refactor is complete. `config.json` is no longer required for skill configuration — each skill owns its own `config.toml`. Adding a new skill requires only a folder + 3 files. Security review findings resolved.

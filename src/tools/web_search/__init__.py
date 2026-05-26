@@ -6,7 +6,7 @@ Auto-discovered via @tool() decorator — no manual wiring needed.
 from loguru import logger
 
 from src.config import debug_enabled
-from ._registry import tool
+from .._registry import tool
 
 
 def _search_web(query: str, max_results: int = 5) -> str:

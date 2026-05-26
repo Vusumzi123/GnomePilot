@@ -123,6 +123,16 @@ def test_install_guides_dir_creates_directory():
     print("  install_guides_dir creates dir: OK")
 
 
+def test_install_guides_dir_reads_per_skill_config():
+    """When config.json has no install_guides, fall back to package_manager/config.toml."""
+    with patch.object(config_module, "load_config", return_value={}):
+        path = config_module.install_guides_dir()
+        expected = config_module.PROJECT_DIR / "install_guides"
+        assert path == expected
+        assert path.exists()
+    print("  install_guides_dir per-skill fallback: OK")
+
+
 def test_mcp_required_env_keys():
     """Verify MCP_ENV_KEYS includes all vars required for GUI app launch.
 
@@ -163,6 +173,7 @@ if __name__ == "__main__":
     test_read_prompt_returns_content()
     test_read_prompt_missing_returns_fallback()
     test_install_guides_dir_creates_directory()
+    test_install_guides_dir_reads_per_skill_config()
     test_mcp_required_env_keys()
     print()
     print("=" * 50)

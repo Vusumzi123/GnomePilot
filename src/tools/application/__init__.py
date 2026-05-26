@@ -11,9 +11,9 @@ from pathlib import Path
 import dbus
 from gi.repository import Gio
 
-from .desktop_index import resolve, _read_exec_line, validate_desktop_file
-from .fuzzy_match import best as best_match
-from ._registry import tool
+from ..desktop_index import resolve, _read_exec_line, validate_desktop_file
+from ..fuzzy_match import best as best_match
+from .._registry import tool
 
 _WINDOWS_BUS = "org.gnome.Shell"
 _WIN_PATH = "/org/gnome/Shell/Extensions/Windows"

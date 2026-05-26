@@ -68,10 +68,16 @@ current — overwrite it each cycle rather than appending.
 
 ## Skill system
 ### Adding a skill
-1. Create `src/tools/<name>.py` with `@tool()` decorators (import from `._registry`)
-2. Create `src/tools/<name>.toml` with `[skill]` section + `prompt_hint`
-3. Toggle in `config.json` via `"skills": { "<name>": false }` (defaults enabled)
-4. `prompt_hint` auto-injects into `prompts/general.md` via `{tool_descriptions}` placeholder
+1. Create `src/tools/<name>/__init__.py` with `@tool()` decorators (import from `.._registry`)
+2. Create `src/tools/<name>/manifest.toml` with `[skill]` section + `prompt_hint`
+3. Create `src/tools/<name>/config.toml` with `[skill]\nenabled = true` (optional, defaults true)
+4. Toggle via the skill's own `config.toml` — no need to edit `config.json`
+5. `prompt_hint` auto-injects into `prompts/general.md` via `{tool_descriptions}` placeholder
+6. `config.json` `"skills"` section acts as an optional override for backward compat
+
+Skill folders are auto-discovered at startup — any directory under `src/tools/` containing
+a `manifest.toml` is treated as a skill.  Shared helpers (`desktop_index.py`, `fuzzy_match.py`)
+stay as flat files and are excluded from discovery naturally.
 
 ### @tool() returns a StructuredTool — NOT callable directly
 Use `.invoke({"arg": val})` or `.func(arg)` in tests, not `tool_name(arg)`.

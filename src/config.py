@@ -15,15 +15,6 @@ DEFAULT_CONFIG = {
         "chat_history_size": 10,
         "recursion_limit": 10,
     },
-    "skills": {
-        "application": True,
-        "package_manager": True,
-        "window_manager": True,
-        "vision": True,
-    },
-    "install_guides": {
-        "directory": "install_guides",
-    },
 }
 
 
@@ -79,12 +70,52 @@ def screenshot_dir() -> Path:
 
 
 def install_guides_dir() -> Path:
-    """Output directory for generated install guide MD files."""
-    cfg = load_config()
-    path = cfg.get("install_guides", {}).get("directory", "install_guides")
-    p = Path(path)
-    if not p.is_absolute():
-        p = PROJECT_DIR / p
+    """Output directory for generated install guide MD files.
+
+    Checks, in order:
+    1. config.json ``install_guides.directory`` override
+    2. package_manager/config.toml ``[install_guides] directory``
+    3. Default: ``install_guides/`` relative to project root
+
+    Directory values containing ``..`` or absolute paths are rejected
+    as a traversal guard — they fall through to the default.
+    """
+    def _safe_dir(path_val: str) -> Path | None:
+        """Resolve a user-supplied directory value, returning None if unsafe."""
+        if not path_val:
+            return None
+        if ".." in path_val or path_val.startswith("/"):
+            return None  # reject traversal attempts
+        p = PROJECT_DIR / path_val
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    # 1. config.json override
+    path = load_config().get("install_guides", {}).get("directory")
+    if path is not None:
+        result = _safe_dir(path)
+        if result is not None:
+            return result
+
+    # The guard rejects traversal patterns — fall through to per-skill config
+
+    # 2. Per-skill config (package_manager/config.toml)
+    import tomllib
+    skill_config_path = (PROJECT_DIR / "src" / "tools" / "package_manager"
+                         / "config.toml")
+    if skill_config_path.exists():
+        try:
+            sc = tomllib.loads(skill_config_path.read_text())
+            path = sc.get("install_guides", {}).get("directory")
+            if path is not None:
+                result = _safe_dir(path)
+                if result is not None:
+                    return result
+        except Exception:
+            pass
+
+    # 3. Default
+    p = PROJECT_DIR / "install_guides"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -153,5 +184,10 @@ def debug_rotation() -> str:
 
 
 def skill_enabled(name: str) -> bool:
-    """Whether a skill module should be loaded. Defaults to True."""
+    """Check config.json ``skills.<name>`` override. Returns True if not set.
+
+    For per-skill enable/disable, use the skill's own ``config.toml`` file.
+    This function is the main-config override — the authoritative check is
+    ``_is_skill_enabled()`` in ``src.tools.__init__`` which reads per-skill config.
+    """
     return bool(load_config().get("skills", {}).get(name, True))
