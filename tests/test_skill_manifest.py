@@ -30,20 +30,17 @@ def test_all_enabled_builds_tool_list():
 
 def test_disabled_skill_omitted():
     """Temporarily disable package_manager, verify it's dropped."""
-    import json
-    config_path = Path(__file__).resolve().parent.parent / "config.json"
-    original = config_path.read_text()
-    cfg = json.loads(original)
-    cfg["skills"]["package_manager"] = False
-    config_path.write_text(json.dumps(cfg, indent=2))
+    from unittest.mock import patch
 
-    lines = _build_tool_list()
-    assert "Search packages" not in lines
-    assert "Open and close applications" in lines
-    assert "Move windows" in lines
+    def mock_skill(name):
+        return name != "package_manager"
+
+    with patch("src.tools.skill_enabled", side_effect=mock_skill):
+        lines = _build_tool_list()
+        assert "Search packages" not in lines
+        assert "Open and close applications" in lines
+        assert "Move windows" in lines
     print("  disabled skill omitted: OK")
-
-    config_path.write_text(original)
 
 
 def test_skill_summary():
