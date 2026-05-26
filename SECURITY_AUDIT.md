@@ -11,10 +11,10 @@
 | Severity | Count |
 |----------|-------|
 | Critical | 0 (*1 resolved*) |
-| High | 2 (*1 resolved*) |
-| Medium | 4 (*1 resolved*) |
-| Low | 5 |
-| **Total** | **11** (*3 resolved*) |
+| High | 2 (*2 resolved*) |
+| Medium | 5 (*1 resolved*) |
+| Low | 4 |
+| **Total** | **11** (*4 resolved*) |
 
 ---
 
@@ -79,6 +79,29 @@ If the user types a password, credit card number, or medical detail into the ass
 ---
 
 ## MEDIUM
+
+### D-1: MCP SDK pulls unnecessary web server dependencies into stdio-only subprocess
+
+**Severity**: Medium (defense-in-depth)  
+**File**: `requirements.txt` (`mcp>=1.0.0`)  
+**Type**: Supply-chain bloat / attack surface amplification
+
+The `mcp` Python SDK (v1.27.1) transitively depends on `starlette`, `uvicorn`,
+`PyJWT`, `python-multipart`, `httpx-sse`, `sse-starlette`, and `pydantic-settings`
+— a complete ASGI web server stack. GnomePilot uses only `StdioClientTransport`.
+
+While these packages are never active at runtime (no sockets are bound), they are
+imported into the MCP subprocess's Python environment. A compromise of any of these
+packages on PyPI would give an attacker code execution in the MCP subprocess.
+
+**Risk**: Low (exploitable only if a dep is compromised at install time)
+**Impact if exploited**: High (env var leakage, subprocess control)
+
+**Mitigation**:
+1. L-2 fix (env restriction) already applied — reduces blast radius from LOW→HIGH
+2. Hash-pinned `requirements.lock.txt` checksums every transitive dep at install time (see Phase 4 of `PLAN_DEP_SECURITY.md`)
+
+---
 
 ### M-1: Prompt injection persists across conversation turns via history enrichment
 
@@ -169,18 +192,26 @@ return re.sub(r'%[uUfFkci]|%%', '', raw).strip()
 
 ---
 
-### L-2: Full os.environ leaked to MCP subprocess
+### L-2: Full os.environ leaked to MCP subprocess — **[PROMOTED TO HIGH — RESOLVED]**
 
 **File**: `src/agents.py:80`  
 **Type**: Data exposure
 
-`MultiServerMCPClient` receives `env=dict(os.environ)`, exposing all environment secrets (`GITHUB_TOKEN`, `AWS_ACCESS_KEY_ID`, etc.) to the MCP tool server subprocess.
+**Original finding**: `MultiServerMCPClient` receives `env=dict(os.environ)`, exposing all environment secrets (`GITHUB_TOKEN`, `AWS_ACCESS_KEY_ID`, etc.) to the MCP tool server subprocess.
 
-**Fix**: Explicitly copy only needed variables:
+**Elevation rationale** (from Dependency Supply-Chain Audit 2026-05-25): The `mcp` SDK transitively pulls in 15 packages including `starlette`, `uvicorn`, `PyJWT`, `python-multipart` — a full ASGI web server stack. While GnomePilot never uses HTTP transport, any compromised transitive dep in the MCP subprocess would have unfettered access to all environment secrets. This raises the finding from LOW to HIGH.
+
+**Resolution**: 
 ```python
-env = {k: os.environ[k] for k in ["PATH", "HOME", "DBUS_SESSION_BUS_ADDRESS", "LANG"]
+env = {k: os.environ[k] for k in
+       ["PATH", "HOME",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "DISPLAY", "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE",
+        "XDG_CURRENT_DESKTOP", "LANG"]
        if k in os.environ}
 ```
+Implemented in `src/agents.py:77-79`. Only essential variables are now forwarded.
 
 ---
 
@@ -251,10 +282,12 @@ screenshots/
 
 4. **High priority**: Restrict desktop file search to system directories or validate file ownership. (H-1)
 
-5. **Medium priority**: Clamp `max_results` in `tool_search_web`. (M-3)
+5. ~~**High priority**: Restrict env vars passed to MCP subprocess (L-2, promoted to HIGH)~~ **DONE — see PLAN_DEP_SECURITY.md Phase 2.**
 
-6. ~~Medium priority: Remove `YAY_ANSWER_ALL` from yay search. (M-5)~~ **DONE.**
+6. **Medium priority**: Clamp `max_results` in `tool_search_web`. (M-3)
 
-7. **Medium priority**: Fix config-mutating test in `test_skill_manifest.py`. (M-2)
+7. ~~Medium priority: Remove `YAY_ANSWER_ALL` from yay search. (M-5)~~ **DONE.**
 
-8. **Low priority**: Address remaining items (field code stripping, env control, .gitignore, prompt boundaries, screenshot zeroing).
+8. **Medium priority**: Fix config-mutating test in `test_skill_manifest.py`. (M-2)
+
+9. **Low priority**: Address remaining items (field code stripping, prompt boundaries, screenshot zeroing).

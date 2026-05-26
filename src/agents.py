@@ -17,6 +17,24 @@ from src.config import (get_model, get_setting, read_prompt, unified_model,
 from src.tools import _build_tool_list
 
 
+MCP_ENV_KEYS = [
+    # The MCP tool server subprocess launches GUI apps via subprocess.Popen.
+    # Those child processes inherit this environment. Missing keys = GUI apps
+    # can't find the compositor/display and silently fail to open.
+    # Trace the chain: MCP subprocess → tool function → Popen/DBus child
+    # before adding or removing keys.
+    "PATH",
+    "HOME",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XDG_RUNTIME_DIR",
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+    "LANG",
+]
+
+
 class Agents:
     """Manages the lifecycle of LLM instances and LangGraph ReAct agents.
 
@@ -77,7 +95,8 @@ class Agents:
                     "command": sys.executable,
                     "args": ["-m", "src.tools.server"],
                     "transport": "stdio",
-                    "env": dict(os.environ),
+                    "env": {k: os.environ[k] for k in MCP_ENV_KEYS
+                            if k in os.environ},
                 }
             }
         )

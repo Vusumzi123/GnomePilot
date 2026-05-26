@@ -18,8 +18,11 @@ def test_search_returns_results():
 
 
 def test_search_no_results():
-    result = _search_web("xyqqwerasdfghjklzxcvbnm", max_results=3)
-    assert "No results found" in result or "Search failed" in result or len(result) > 0
+    """Search with an obscure query — function must return a string without crashing."""
+    result = _search_web("zzxxyyqqaazzbbnnmm12345nonexistent", max_results=1)
+    assert isinstance(result, str)
+    assert len(result) > 0
+    print(f"  no results handled: OK ({len(result)} chars)")
     print("  no results handled: OK")
 
 
