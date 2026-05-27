@@ -2,3 +2,4 @@
 name = "web_search"
 description = "Search the web via DuckDuckGo for current facts and context"
 prompt_hint = "- Search the web for current information (use sparingly, only when needed)"
+unavailable_message = "I cannot search the web right now — the web search tool is not enabled."

@@ -10,6 +10,26 @@ import subprocess
 
 from .._registry import tool
 
+from pathlib import Path
+import tomllib
+from langchain_core.messages import AIMessage
+
+_HERE = Path(__file__).parent
+_UNAVAILABLE_MSG = "I cannot search or install packages right now — the package management tools are not enabled."
+
+_try_manifest = _HERE / "manifest.toml"
+if _try_manifest.exists():
+    try:
+        _UNAVAILABLE_MSG = tomllib.loads(_try_manifest.read_text()).get(
+            "skill", {}).get("unavailable_message", _UNAVAILABLE_MSG)
+    except Exception:
+        pass
+
+
+async def handler(input, config=None):
+    """Returned when the skill is disabled — provides a clear unavailable message."""
+    return {"messages": [AIMessage(content=_UNAVAILABLE_MSG)]}
+
 
 def _search_packages(query: str) -> str:
     """Search pacman and AUR (via yay) for a package, returning top 5 from each."""

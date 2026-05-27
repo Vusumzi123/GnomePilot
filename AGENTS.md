@@ -82,6 +82,23 @@ stay as flat files and are excluded from discovery naturally.
 ### @tool() returns a StructuredTool — NOT callable directly
 Use `.invoke({"arg": val})` or `.func(arg)` in tests, not `tool_name(arg)`.
 
+### Unavailable handler
+Every skill `__init__.py` must export an `async def handler(input, config=None)`.
+It returns `{"messages": [AIMessage(content="...")]}` when the skill is disabled.
+The message is loaded from `manifest.toml` `[skill] unavailable_message`, falling
+back to a hardcoded default in `__init__.py`.
+
+When a skill becomes a standalone agent, wire it in `src/agents.py`:
+```python
+from src.tools.<name> import handler as _<name>_handler
+# in start():
+if not <name>_tools:
+    self._<name>_agent = _<name>_handler
+```
+Currently only `vision` uses this pattern (the other 4 skills are sub-tools of
+the general agent and don't need it — their absence is handled by the dynamic
+`{tool_descriptions}` prompt).
+
 ## Tests
 ```sh
 python3 run_tests.py              # all tests
@@ -126,7 +143,7 @@ Use `unified_model` to avoid VRAM swapping between agents.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **GnomePilot** (938 symbols, 1612 relationships, 58 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **GnomePilot** (1211 symbols, 1982 relationships, 26 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -15,6 +15,11 @@ from langgraph.prebuilt import create_react_agent
 from src.config import (get_model, get_setting, read_prompt, unified_model,
                         num_ctx, debug_enabled, debug_verbose)
 from src.tools import _build_tool_list
+from src.tools.vision import handler as _vision_handler
+from src.tools.application import handler as _application_handler
+from src.tools.package_manager import handler as _package_manager_handler
+from src.tools.web_search import handler as _web_search_handler
+from src.tools.window_manager import handler as _window_manager_handler
 
 
 MCP_ENV_KEYS = [
@@ -108,9 +113,12 @@ class Agents:
         self._general_agent = create_react_agent(
             self._general_llm, general_tools, prompt=self.general_prompt,
         )
-        self._vision_agent = create_react_agent(
-            self._vision_llm, vision_tools, prompt=self.vision_prompt,
-        )
+        if not vision_tools:
+            self._vision_agent = _vision_handler
+        else:
+            self._vision_agent = create_react_agent(
+                self._vision_llm, vision_tools, prompt=self.vision_prompt,
+            )
 
     async def restart(self) -> None:
         """Shut down and restart the MCP tool server and agents.

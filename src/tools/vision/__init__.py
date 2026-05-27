@@ -24,6 +24,25 @@ from PIL import Image
 from src.config import get_model, screenshot_dir, screenshot_retention, unload_before_analysis
 from .._registry import tool
 
+import tomllib
+from langchain_core.messages import AIMessage
+
+_HERE = Path(__file__).parent
+_UNAVAILABLE_MSG = "I cannot see your screen right now — the vision/screenshot capability is not enabled."
+
+_try_manifest = _HERE / "manifest.toml"
+if _try_manifest.exists():
+    try:
+        _UNAVAILABLE_MSG = tomllib.loads(_try_manifest.read_text()).get(
+            "skill", {}).get("unavailable_message", _UNAVAILABLE_MSG)
+    except Exception:
+        pass
+
+
+async def handler(input, config=None):
+    """Returned when the skill is disabled — provides a clear unavailable message."""
+    return {"messages": [AIMessage(content=_UNAVAILABLE_MSG)]}
+
 
 SCREENSHOT_TIMEOUT = 20.0
 

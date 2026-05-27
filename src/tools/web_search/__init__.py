@@ -8,6 +8,26 @@ from loguru import logger
 from src.config import debug_enabled
 from .._registry import tool
 
+from pathlib import Path
+import tomllib
+from langchain_core.messages import AIMessage
+
+_HERE = Path(__file__).parent
+_UNAVAILABLE_MSG = "I cannot search the web right now — the web search tool is not enabled."
+
+_try_manifest = _HERE / "manifest.toml"
+if _try_manifest.exists():
+    try:
+        _UNAVAILABLE_MSG = tomllib.loads(_try_manifest.read_text()).get(
+            "skill", {}).get("unavailable_message", _UNAVAILABLE_MSG)
+    except Exception:
+        pass
+
+
+async def handler(input, config=None):
+    """Returned when the skill is disabled — provides a clear unavailable message."""
+    return {"messages": [AIMessage(content=_UNAVAILABLE_MSG)]}
+
 
 def _search_web(query: str, max_results: int = 5) -> str:
     """Search DuckDuckGo and return top results as structured text."""

@@ -15,6 +15,26 @@ from ..desktop_index import resolve, _read_exec_line, validate_desktop_file
 from ..fuzzy_match import best as best_match
 from .._registry import tool
 
+import tomllib
+from langchain_core.messages import AIMessage
+
+_HERE = Path(__file__).parent
+_UNAVAILABLE_MSG = "I cannot open or close applications right now — the application tools are not enabled."
+
+_try_manifest = _HERE / "manifest.toml"
+if _try_manifest.exists():
+    try:
+        _UNAVAILABLE_MSG = tomllib.loads(_try_manifest.read_text()).get(
+            "skill", {}).get("unavailable_message", _UNAVAILABLE_MSG)
+    except Exception:
+        pass
+
+
+async def handler(input, config=None):
+    """Returned when the skill is disabled — provides a clear unavailable message."""
+    return {"messages": [AIMessage(content=_UNAVAILABLE_MSG)]}
+
+
 _WINDOWS_BUS = "org.gnome.Shell"
 _WIN_PATH = "/org/gnome/Shell/Extensions/Windows"
 _WIN_IFACE = "org.gnome.Shell.Extensions.Windows"
