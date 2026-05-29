@@ -12,7 +12,7 @@ from .voice import listen, speak
 from .config import (debug_enabled, debug_verbose, debug_log_dir,
                      debug_retention_days, debug_rotation,
                      chat_history_size, history_max_tokens,
-                     formatter_enabled)
+                     formatter_enabled, bootstrap_config_if_missing)
 
 
 async def main_async() -> None:
@@ -21,6 +21,9 @@ async def main_async() -> None:
     Accepts voice (stub) or text input, routes through the pipeline, prints and
     speaks the response. Handles Ctrl+C and normal exit gracefully.
     """
+    # Auto-create config.json if missing (first run after fresh clone)
+    bootstrap_config_if_missing()
+
     print("=" * 50)
     print("  CachyOS GNOME Local AI Assistant")
     print("  Models: config.json  |  TTS: Piper")

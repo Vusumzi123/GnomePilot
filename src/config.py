@@ -10,11 +10,40 @@ DEFAULT_CONFIG = {
         "orchestrator": "llama3.1:8b",
         "vision": "minicpm-v:8b",
     },
+    "unified_model": None,
+    "screenshots": {
+        "directory": "/tmp/os-assistant/screenshots",
+        "max_retention": 10,
+        "unload_before_analysis": False,
+    },
+    "formatter": {
+        "enabled": True,
+    },
     "orchestrator": {
         "temperature": 0,
+        "num_ctx": 32768,
         "chat_history_size": 10,
+        "history_max_tokens": 2000,
         "recursion_limit": 10,
+        "router_timeout": 15,
+        "executor_timeout": 60,
     },
+    "debug": {
+        "enabled": False,
+        "verbose": False,
+        "log_dir": "logs",
+        "retention_days": 7,
+        "rotation": "10 MB",
+    },
+    "skills": {},
+}
+
+# Per-role defaults used by model_config() when the role key is missing.
+# MUST match the models section above.
+_MODEL_DEFAULTS: dict[str, dict[str, str]] = {
+    "orchestrator": {"provider": "ollama", "model": "llama3.1:8b"},
+    "vision": {"provider": "ollama", "model": "minicpm-v:8b"},
+    "router": {"provider": "ollama", "model": "llama3.1:8b"},
 }
 
 
@@ -27,6 +56,73 @@ def load_config() -> dict:
         return dict(DEFAULT_CONFIG)
 
 
+def bootstrap_config_if_missing() -> bool:
+    """Create config.json from DEFAULT_CONFIG if it does not exist.
+
+    Returns True if a new file was created, False otherwise.
+    """
+    if CONFIG_PATH.exists():
+        return False
+    CONFIG_PATH.write_text(
+        json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False) + "\n"
+    )
+    return True
+
+
+def _normalize_model_value(val) -> dict | None:
+    """Normalize a model config value to a {provider, model, ...} dict.
+
+    Strings are treated as Ollama model names.
+    Dicts are passed through with provider defaulting to 'ollama'.
+    Returns None for None / empty values.
+    """
+    if val is None:
+        return None
+    if isinstance(val, str):
+        val = val.strip()
+        if not val:
+            return None
+        return {"provider": "ollama", "model": val}
+    if isinstance(val, dict):
+        normalized = dict(val)
+        normalized.setdefault("provider", "ollama")
+        return normalized
+    return None
+
+
+def model_config(role: str) -> dict:
+    """Return the per-role provider+model config for *role*.
+
+    Roles: ``"orchestrator"``, ``"vision"``, ``"router"``.
+
+    Resolution order:
+    1. ``models.<role>`` in config.json:
+       - string  → ``{"provider": "ollama", "model": "<string>"}``
+       - object  → used as-is (provider defaults to ``"ollama"``)
+    2. Missing  → hardcoded Ollama default for that role
+
+    Returns a flat dict ready to pass to ``create_llm()``.
+    """
+    cfg = load_config()
+    val = cfg.get("models", {}).get(role)
+    result = _normalize_model_value(val)
+    if result is not None:
+        return result
+    return dict(_MODEL_DEFAULTS.get(role, _MODEL_DEFAULTS["orchestrator"]))
+
+
+def unified_model_config() -> dict | None:
+    """Return the unified-model config dict, or None if per-role mode is active.
+
+    ``unified_model`` in config.json can be:
+    - string  → ``{"provider": "ollama", "model": "<string>"}``
+    - object  → used as-is (provider defaults to ``"ollama"``)
+    - null / missing → ``None`` (per-role mode)
+    """
+    cfg = load_config()
+    return _normalize_model_value(cfg.get("unified_model"))
+
+
 def get_model(key: str, default: str = "") -> str:
     """Look up a model name from the 'models' section of the config."""
     cfg = load_config()
@@ -34,7 +130,12 @@ def get_model(key: str, default: str = "") -> str:
 
 
 def unified_model() -> str | None:
-    """Return the shared model name when unified_model is set, else None."""
+    """(Deprecated) Return the shared model name when unified_model is set, else None.
+
+    Prefer ``unified_model_config()`` which supports per-provider configuration.
+    This function is kept for backward compatibility and only recognizes
+    string ``unified_model`` values (Ollama only).
+    """
     cfg = load_config()
     val = cfg.get("unified_model")
     if val and isinstance(val, str) and val.strip():
