@@ -1,11 +1,17 @@
 """Executor — runs agents sequentially with chaining support."""
 
+import asyncio
 from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage
 from loguru import logger
 
 from src.extractor import Extractor
+
+# ── constants ──
+
+VISION_CONTEXT_PREFIX = "Context from vision analysis (already completed):"
+"""Prefix used when chaining vision output into the general agent prompt."""
 
 
 @dataclass
@@ -28,7 +34,7 @@ class Executor:
 
     async def execute(self, agents_order: list[str], messages: list, *,
                       vision_context: str = "", user_input: str = "",
-                       recursion_limit: int = 10) -> AgentResult:
+                       recursion_limit: int = 10, timeout: int = 60) -> AgentResult:
         """Execute the given agents in sequence.
 
         For a chain ["vision", "general"]:
@@ -37,12 +43,16 @@ class Executor:
           - General agent runs second with a crafted prompt containing
             the vision analysis, NOT the original messages.
 
+        Each agent invocation is wrapped with asyncio.wait_for — on timeout,
+        an error message is returned and the chain continues (if applicable).
+
         Args:
             agents_order: Agent names to run (e.g. ["vision"] or ["vision","general"]).
             messages: Pre-built LangChain message list for the first agent.
             vision_context: Existing vision analysis (used when resuming a chain).
             user_input: Original user request (used for chaining prompt).
             recursion_limit: Max LangGraph recursion steps per agent.
+            timeout: Per-agent execution timeout in seconds (default 60).
         """
         self.last_tool_calls.clear()
         final_text = ""
@@ -56,17 +66,31 @@ class Executor:
                 logger.info("Chaining: injecting {} chars vision context", len(vision_context))
                 prompt = (
                     f"The user asked: \"{user_input}\"\n\n"
-                    f"Context from vision analysis (already completed):\n{vision_context}\n\n"
+                    f"{VISION_CONTEXT_PREFIX}\n{vision_context}\n\n"
                     "Now perform the requested action using this context."
                 )
                 current_messages = [HumanMessage(content=prompt)]
             else:
                 current_messages = messages
 
-            result = await agent.ainvoke(
-                {"messages": current_messages},
-                {"recursion_limit": recursion_limit},
-            )
+            try:
+                result = await asyncio.wait_for(
+                    agent.ainvoke(
+                        {"messages": current_messages},
+                        {"recursion_limit": recursion_limit},
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("{} agent timed out after {}s", name, timeout)
+                response = (
+                    f"I was unable to complete that request — "
+                    f"the {name} agent timed out."
+                )
+                if name == "vision":
+                    vision_context = response
+                final_text = response
+                continue
 
             raw_messages = result["messages"]
             calls = Extractor.tool_calls(raw_messages)

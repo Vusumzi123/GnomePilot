@@ -1,5 +1,7 @@
 """Router — hybrid regex + LLM routing to decide which agent(s) to invoke."""
 
+import asyncio
+
 from langchain_core.messages import HumanMessage
 from langchain_ollama import ChatOllama
 from loguru import logger
@@ -10,9 +12,9 @@ class Router:
     a user request.
 
     Uses a two-tier strategy:
-    1. Regex fast-path for obvious screen/action keywords in the ORIGINAL input.
-    2. LLM fallback for ambiguous queries using the enriched input (which may
-       include history context).
+    1. Regex fast-path for obvious screen/action keywords in the input.
+    2. LLM fallback for ambiguous queries using only the current input
+       (no history contamination — routing is stateless per-request).
     """
 
     SCREEN_WORDS = (
@@ -27,15 +29,16 @@ class Router:
         "start", "run", "terminate", "kill",
     )
 
-    def __init__(self, llm: ChatOllama, prompt: str = ""):
+    def __init__(self, llm: ChatOllama, prompt: str = "", timeout: int = 15):
         self.llm = llm
         self.prompt = prompt
+        self._timeout = timeout
 
-    async def route(self, user_input: str, enriched: str = "") -> list[str]:
+    async def route(self, user_input: str) -> list[str]:
         """Decide which agent(s) to invoke.
 
-        Regex runs on the ORIGINAL input only — no history contamination.
-        LLM fallback receives the enriched input with history context.
+        Regex fast-path runs on the input. LLM fallback receives only
+        the current user input — no history contamination.
 
         Returns ["vision"], ["general"], or ["vision", "general"] (chain).
         """
@@ -55,8 +58,7 @@ class Router:
             logger.info("Route → [general]")
             return ["general"]
 
-        llm_input = enriched or user_input
-        answer = await self._llm_is_screen(llm_input)
+        answer = await self._llm_is_screen(user_input)
         if answer:
             logger.info("Route → [vision] (LLM)")
             return ["vision"]
@@ -64,18 +66,28 @@ class Router:
         return ["general"]
 
     async def _llm_is_screen(self, user_input: str) -> bool:
-        """Ask the router LLM a binary yes/no: is this about the user's screen?"""
+        """Ask the router LLM a binary yes/no: is this about the user's screen?
+
+        Wrapped with asyncio.wait_for — on timeout, falls back to False
+        (route to general) rather than hanging the pipeline.
+        """
         if not self.prompt:
             return False
         try:
             logger.debug("Router LLM query: {}", self.prompt)
             logger.debug("Router LLM input: {}", user_input)
-            msg = await self.llm.ainvoke([
-                HumanMessage(content=f"{self.prompt}\n\nRequest: {user_input}")
-            ])
+            msg = await asyncio.wait_for(
+                self.llm.ainvoke([
+                    HumanMessage(content=f"{self.prompt}\n\nRequest: {user_input}")
+                ]),
+                timeout=self._timeout,
+            )
             content = msg.content
             if isinstance(content, list):
                 content = " ".join(str(c) for c in content)
             return content.strip().lower().startswith("yes")
+        except asyncio.TimeoutError:
+            logger.warning("Router LLM timeout ({}s) — falling back to general", self._timeout)
+            return False
         except Exception:
             return False

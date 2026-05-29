@@ -7,12 +7,54 @@ class History:
     """Manages conversation history: add turns, build message lists, provide
     enrichment context for the router.
 
+    Trims history by both turn count (max_turns) and estimated token count
+    (max_tokens). The stricter limit wins.  At least 1 turn is always retained
+    when history is enabled, even if it exceeds the token budget.
+
     History is in-memory only — restarts lose context.
     """
 
-    def __init__(self, max_turns: int = 10):
+    def __init__(self, max_turns: int = 10, max_tokens: int = 2000):
         self._turns: list[dict[str, str]] = []
         self.max_turns = max_turns
+        self.max_tokens = max_tokens
+
+    # ── helpers ──
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Approximate token count: ~4 chars per token for English text."""
+        return max(1, len(text) // 4)
+
+    def _trim_to_budget(self):
+        """Remove oldest turns until within both turn and token budgets.
+
+        At least 1 turn is always retained when history is enabled, even
+        if a single turn exceeds the token budget.
+        """
+        if self.max_turns <= 0:
+            self._turns.clear()
+            return
+        if self.max_tokens <= 0:
+            self._turns.clear()
+            return
+
+        while len(self._turns) > 0:
+            total = sum(
+                self._estimate_tokens(t["user"]) + self._estimate_tokens(t["assistant"])
+                for t in self._turns
+            )
+            within_turns = len(self._turns) <= self.max_turns
+            within_tokens = total <= self.max_tokens
+
+            if within_turns and within_tokens:
+                break
+
+            # Keep at least 1 turn — stop popping before emptying
+            if len(self._turns) == 1:
+                break
+
+            self._turns.pop(0)
 
     # ── public API ──
 
@@ -22,24 +64,26 @@ class History:
         return len(self._turns)
 
     def add_turn(self, user_input: str, response: str) -> None:
-        """Append a turn and trim to max_turns (FIFO).
+        """Append a turn and trim to limits (FIFO — oldest first).
 
-        No-op when max_turns <= 0.
+        No-op when max_turns <= 0.  After appending, trims by both
+        max_turns and max_tokens budgets (whichever is stricter).
         """
         if self.max_turns <= 0:
             return
         self._turns.append({"user": user_input, "assistant": response})
-        while len(self._turns) > self.max_turns:
-            self._turns.pop(0)
+        self._trim_to_budget()
 
     def build_messages(self, user_input: str, *,
                        include_history: bool = True) -> list:
         """Build the message list for an agent invocation.
 
         When include_history is True and history is available, prepends
-        stored turns as (HumanMessage, AIMessage) pairs so the LLM sees
-        conversation context.  Always appends the current input as a
-        final HumanMessage.
+        stored turns as typed (HumanMessage, AIMessage) pairs so the LLM
+        sees conversation context.  No preamble is injected — the system
+        prompt handles behavior rules like "do not repeat prior tool calls."
+
+        Always appends the current input as a final HumanMessage.
 
         Args:
             user_input: The current user request.
@@ -48,11 +92,6 @@ class History:
         """
         messages: list = []
         if include_history and self._turns and self.max_turns > 0:
-            messages.append(HumanMessage(content=(
-                "Below is our previous conversation — context only. "
-                "Do NOT repeat or re-execute any tool calls shown below. "
-                "Reply to my most recent message only."
-            )))
             for turn in self._turns[-self.max_turns:]:
                 messages.append(HumanMessage(content=turn["user"]))
                 messages.append(AIMessage(content=turn["assistant"]))
@@ -65,6 +104,11 @@ class History:
 
         Concatenates the last 3 user queries into a [History: ...] prefix.
         When history is empty or disabled, returns the input unchanged.
+
+        .. deprecated:: 2026-05
+            The pipeline no longer uses this — routing is stateless and
+            operates on raw user input only.  The method remains for
+            backward compat but should not be used in new code.
         """
         if not self._turns or self.max_turns <= 0:
             return user_input

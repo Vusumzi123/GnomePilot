@@ -46,19 +46,17 @@ def test_build_messages_with_history():
     h.add_turn("open firefox", "Opened Firefox.")
 
     msgs = h.build_messages("what is up", include_history=True)
-    assert len(msgs) == 6  # 1 prefix + 2 pairs (4) + 1 current
+    assert len(msgs) == 5  # 2 pairs (4) + 1 current = 5 (no preamble)
     assert isinstance(msgs[0], HumanMessage)
-    assert "previous conversation" in msgs[0].content
-    assert isinstance(msgs[1], HumanMessage)
-    assert msgs[1].content == "hello"
-    assert isinstance(msgs[2], AIMessage)
-    assert msgs[2].content == "Hi there!"
-    assert isinstance(msgs[3], HumanMessage)
-    assert msgs[3].content == "open firefox"
-    assert isinstance(msgs[4], AIMessage)
-    assert msgs[4].content == "Opened Firefox."
-    assert isinstance(msgs[5], HumanMessage)
-    assert msgs[5].content == "what is up"
+    assert msgs[0].content == "hello"
+    assert isinstance(msgs[1], AIMessage)
+    assert msgs[1].content == "Hi there!"
+    assert isinstance(msgs[2], HumanMessage)
+    assert msgs[2].content == "open firefox"
+    assert isinstance(msgs[3], AIMessage)
+    assert msgs[3].content == "Opened Firefox."
+    assert isinstance(msgs[4], HumanMessage)
+    assert msgs[4].content == "what is up"
     print("  build_messages with history: OK")
 
 
@@ -126,6 +124,58 @@ def test_clear():
     print("  clear: OK")
 
 
+# ── token trimming tests ──
+
+
+def test_token_budget_trimmed():
+    """When token budget is exceeded, oldest turns are dropped."""
+    h = History(max_turns=10, max_tokens=100)
+    big = "X" * 400  # 400 chars → ~100 tokens
+    h.add_turn("hello", big)       # ~1 + ~100 = ~101 tokens (already over budget alone)
+    h.add_turn("how are you", big)  # ~2 + ~100 = ~102 — total ~203 > 100 budget
+    # First turn should be trimmed, second kept
+    assert h.turns == 1, f"Expected 1 turn, got {h.turns}"
+    assert h._turns[0]["user"] == "how are you"
+    print("  token budget trimmed oldest: OK")
+
+
+def test_token_budget_keeps_one():
+    """A single turn that exceeds the budget is still kept."""
+    h = History(max_turns=10, max_tokens=50)
+    long_response = "X" * 400  # ~100 tokens — exceeds 50 budget
+    h.add_turn("hello", long_response)
+    assert h.turns == 1, "Single turn should be kept even if over budget"
+    print("  single turn over budget still kept: OK")
+
+
+def test_token_budget_disabled():
+    """max_tokens <= 0 clears all history."""
+    h = History(max_turns=10, max_tokens=0)
+    h.add_turn("hello", "Hi")
+    assert h.turns == 0, "max_tokens=0 should disable history"
+    print("  max_tokens=0 disables: OK")
+
+
+def test_token_budget_stricter_wins():
+    """When both limits are set, the stricter one wins."""
+    # max_tokens is very tight, max_turns is generous
+    h = History(max_turns=100, max_tokens=50)
+    for i in range(5):
+        h.add_turn(f"user{i}", "response" * 5)  # ~45 chars → ~11 tokens
+    # 5 turns × ~11 tokens = ~55 tokens > 50 budget → should trim
+    assert h.turns < 5, f"Token budget should trim, got {h.turns} turns"
+    print(f"  stricter budget wins: {h.turns} turns (max_tokens=50, max_turns=100): OK")
+
+
+def test_estimate_tokens():
+    """_estimate_tokens uses chars // 4 approximation."""
+    assert History._estimate_tokens("") == 1
+    assert History._estimate_tokens("abcd") == 1
+    assert History._estimate_tokens("12345678") == 2
+    assert History._estimate_tokens("x" * 100) == 25
+    print("  _estimate_tokens: OK")
+
+
 if __name__ == "__main__":
     test_add_and_count()
     test_max_size_enforcement()
@@ -137,6 +187,11 @@ if __name__ == "__main__":
     test_enrich_with_context()
     test_enrich_truncation()
     test_clear()
+    test_token_budget_trimmed()
+    test_token_budget_keeps_one()
+    test_token_budget_disabled()
+    test_token_budget_stricter_wins()
+    test_estimate_tokens()
     print()
     print("=" * 50)
     print("All History tests passed.")

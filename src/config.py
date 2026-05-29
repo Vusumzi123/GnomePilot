@@ -153,9 +153,28 @@ def chat_history_size() -> int:
     return int(cfg.get("orchestrator", {}).get("chat_history_size", 10))
 
 
+def history_max_tokens() -> int:
+    """Token budget for conversation history (key 'history_max_tokens'). Default 2000.
+
+    Oldest turns are dropped when the estimated token count exceeds this value.
+    Estimation uses a simple chars // 4 heuristic — accurate within ±20%.
+    """
+    return int(load_config().get("orchestrator", {}).get("history_max_tokens", 2000))
+
+
 def recursion_limit() -> int:
     """Max LangGraph recursion steps per agent call (default 10)."""
     return int(load_config().get("orchestrator", {}).get("recursion_limit", 10))
+
+
+def router_timeout() -> int:
+    """Router LLM call timeout in seconds (key 'router_timeout'). Default 15."""
+    return int(load_config().get("orchestrator", {}).get("router_timeout", 15))
+
+
+def executor_timeout() -> int:
+    """Per-agent execution timeout in seconds (key 'executor_timeout'). Default 60."""
+    return int(load_config().get("orchestrator", {}).get("executor_timeout", 60))
 
 
 def debug_enabled() -> bool:
