@@ -10,8 +10,29 @@ import json
 
 import dbus
 
-from ._registry import tool
-from .fuzzy_match import best as best_match
+from .._registry import tool
+from ..fuzzy_match import best as best_match
+
+from pathlib import Path
+import tomllib
+from langchain_core.messages import AIMessage
+
+_HERE = Path(__file__).parent
+_UNAVAILABLE_MSG = "I cannot move windows between workspaces right now — the window management tools are not enabled."
+
+_try_manifest = _HERE / "manifest.toml"
+if _try_manifest.exists():
+    try:
+        _UNAVAILABLE_MSG = tomllib.loads(_try_manifest.read_text()).get(
+            "skill", {}).get("unavailable_message", _UNAVAILABLE_MSG)
+    except Exception:
+        pass
+
+
+async def handler(input, config=None):
+    """Returned when the skill is disabled — provides a clear unavailable message."""
+    return {"messages": [AIMessage(content=_UNAVAILABLE_MSG)]}
+
 
 _WIN_BUS = "org.gnome.Shell"
 _WIN_PATH = "/org/gnome/Shell/Extensions/Windows"

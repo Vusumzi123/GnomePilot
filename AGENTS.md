@@ -2,19 +2,19 @@
 
 ## Entry point & run
 - `src/main.py` (`python -m src.main`) — CLI + TTS loop
-- Config: `config.json` (models, skills toggle, debug, screenshots, install_guides, formatter)
+- Config: `config.json` (models, skills toggle, debug, screenshots, formatter)
 
 ## Architecture
 Pipeline of 7 single-responsibility classes wired in `src/pipeline.py`:
 
 ```
-Enrich (History) → Route (Router) → Build (History) → Execute (Executor) → Format (Formatter) → Store (History)
+Route (Router) → Build (History) → Execute (Executor) → Format (Formatter) → Store (History)
 ```
 
 - 2 LangGraph `create_react_agent` subagents managed by `src/agents.py` (start, restart, shutdown)
 - MCP tool server runs as a subprocess on stdio (`src/tools/server.py`)
 - History is in-memory only — restart loses context
-- Router: regex fast-path + LLM binary yes/no fallback
+- Router: regex fast-path on raw input + LLM binary yes/no fallback (no history contamination)
 
 ## Subagents
 
@@ -30,8 +30,9 @@ All expert agents share the orchestrator LLM (`_general_llm`) — no extra VRAM 
    - Screen + action keywords → `["vision", "general"]` (chain)
    - Screen only → `["vision"]`
    - Action only → `["general"]`
-2. **LLM binary yes/no fallback** (enriched with history context):
+2. **LLM binary yes/no fallback** (raw input only — no history contamination):
    - Returns one of: `general`, `vision`
+   - Wrapped with `asyncio.wait_for(timeout=15s)` — on timeout, falls back to general
 
 ## OpenCode Subagents (workflow delegation)
 
@@ -68,13 +69,36 @@ current — overwrite it each cycle rather than appending.
 
 ## Skill system
 ### Adding a skill
-1. Create `src/tools/<name>.py` with `@tool()` decorators (import from `._registry`)
-2. Create `src/tools/<name>.toml` with `[skill]` section + `prompt_hint`
-3. Toggle in `config.json` via `"skills": { "<name>": false }` (defaults enabled)
-4. `prompt_hint` auto-injects into `prompts/general.md` via `{tool_descriptions}` placeholder
+1. Create `src/tools/<name>/__init__.py` with `@tool()` decorators (import from `.._registry`)
+2. Create `src/tools/<name>/manifest.toml` with `[skill]` section + `prompt_hint`
+3. Create `src/tools/<name>/config.toml` with `[skill]\nenabled = true` (optional, defaults true)
+4. Toggle via the skill's own `config.toml` — no need to edit `config.json`
+5. `prompt_hint` auto-injects into `prompts/general.md` via `{tool_descriptions}` placeholder
+6. `config.json` `"skills"` section acts as an optional override for backward compat
+
+Skill folders are auto-discovered at startup — any directory under `src/tools/` containing
+a `manifest.toml` is treated as a skill.  Shared helpers (`desktop_index.py`, `fuzzy_match.py`)
+stay as flat files and are excluded from discovery naturally.
 
 ### @tool() returns a StructuredTool — NOT callable directly
 Use `.invoke({"arg": val})` or `.func(arg)` in tests, not `tool_name(arg)`.
+
+### Unavailable handler
+Every skill `__init__.py` must export an `async def handler(input, config=None)`.
+It returns `{"messages": [AIMessage(content="...")]}` when the skill is disabled.
+The message is loaded from `manifest.toml` `[skill] unavailable_message`, falling
+back to a hardcoded default in `__init__.py`.
+
+When a skill becomes a standalone agent, wire it in `src/agents.py`:
+```python
+from src.tools.<name> import handler as _<name>_handler
+# in start():
+if not <name>_tools:
+    self._<name>_agent = _<name>_handler
+```
+Currently only `vision` uses this pattern (the other 4 skills are sub-tools of
+the general agent and don't need it — their absence is handled by the dynamic
+`{tool_descriptions}` prompt).
 
 ## Tests
 ```sh
@@ -96,6 +120,8 @@ Integration tests: `{"test_agents", "test_executor", "test_pipeline", "test_clos
 - **Tool dedup**: Executor detects duplicate (name, args) calls and prepends a stop warning
 - **Install guides**: `tool_install_package` does NOT install packages. It generates an MD file in `install_guides/` with pacman/yay commands the user can run manually. Configurable via `install_guides.directory`.
 - **Recursion limit**: Configurable via `orchestrator.recursion_limit` (default 10). `GraphRecursionError` caught in Pipeline with user-friendly message
+- **History trimming**: Configurable via `orchestrator.history_max_tokens` (default 2000) and `orchestrator.chat_history_size` (default 10). Oldest turns dropped when either budget exceeded. Estimation uses chars//4 heuristic (±20%).
+- **LLM timeouts**: Router LLM call wraps with `asyncio.wait_for(timeout=router_timeout)` default 15s; executor agent call wraps with `asyncio.wait_for(timeout=executor_timeout)` default 60s. Configurable via `config.json` `"orchestrator": {"router_timeout": 15, "executor_timeout": 60}`.
 - **Ollama unload**: `ollama.generate(model=name, prompt="", keep_alive=0)` triggers `done_reason:"unload"` — frees VRAM
 - **MCP subprocess env**: Whitelisted to `MCP_ENV_KEYS` in `src/agents.py`. GUI apps launched via `subprocess.Popen` inside the subprocess inherit this env — must include display vars (`WAYLAND_DISPLAY`, `DISPLAY`, `XDG_RUNTIME_DIR`). Before adding/removing keys, trace the full chain: MCP subprocess → tool function → Popen/DBus child. A unit test (`test_mcp_required_env_keys`) catches missing keys.
 - **Prompts**: Editable Markdown in `prompts/` — `general.md`, `vision.md`, `router.md`. No code changes needed.
@@ -105,7 +131,7 @@ Integration tests: `{"test_agents", "test_executor", "test_pipeline", "test_clos
 ```sh
 sudo pacman -S python python-pip python-dbus python-gobject ollama dbus xdg-desktop-portal-gnome
 ollama pull llama3.1:8b
-ollama pull minicpm-v:8b
+ollama pull qwen3.5:2b
 ```
 
 ## Model sizing (fits 12 GB VRAM)
@@ -120,7 +146,7 @@ Use `unified_model` to avoid VRAM swapping between agents.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **GnomePilot** (938 symbols, 1612 relationships, 58 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **GnomePilot** (1320 symbols, 2127 relationships, 28 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

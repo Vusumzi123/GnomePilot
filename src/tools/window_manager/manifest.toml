@@ -2,3 +2,4 @@
 name = "window_manager"
 description = "Move windows between GNOME workspaces"
 prompt_hint = "- Move windows between workspaces"
+unavailable_message = "I cannot move windows between workspaces right now — the window management tools are not enabled."

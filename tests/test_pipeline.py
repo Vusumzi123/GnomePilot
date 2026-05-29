@@ -19,7 +19,7 @@ class FakeRouter:
     def __init__(self, agents: list[str]):
         self._agents = agents
 
-    async def route(self, user_input: str, enriched: str = "") -> list[str]:
+    async def route(self, user_input: str) -> list[str]:
         return list(self._agents)
 
 
@@ -29,7 +29,7 @@ class FakeExecutor:
         self._tool_calls = tool_calls or []
 
     async def execute(self, agents_order, messages, *, vision_context="",
-                      user_input="", recursion_limit=10):
+                      user_input="", recursion_limit=10, timeout=60):
         return AgentResult(text=self._text, tool_calls=list(self._tool_calls))
 
 
@@ -66,7 +66,6 @@ async def test_pipeline_context():
     ctx = pipeline.context
     assert ctx.agents == ["vision", "general"]
     assert ctx.formatted == "I see Firefox."
-    assert ctx.enriched_input is not None
     print("  unit: chain context populated: OK")
 
 
@@ -106,9 +105,8 @@ async def test_pipeline_history_accumulates():
 
     # Third call should have history prepended
     msgs = pipeline.history.build_messages("what was that?", include_history=True)
-    assert len(msgs) == 8  # 1 prefix + 3 pairs (6) + 1 current = 8
-    assert "previous conversation" in msgs[0].content
-    assert msgs[1].content == "open firefox"
+    assert len(msgs) == 7  # 3 pairs (6) + 1 current = 7 (no preamble)
+    assert msgs[0].content == "open firefox"
     print("  unit: history accumulates: OK")
 
 

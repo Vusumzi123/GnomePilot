@@ -1,0 +1,5 @@
+[skill]
+name = "vision"
+description = "Capture and describe what is visible on screen"
+prompt_hint = ""
+unavailable_message = "I cannot see your screen right now — the vision/screenshot capability is not enabled."

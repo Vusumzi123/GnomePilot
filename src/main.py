@@ -11,7 +11,8 @@ from .extractor import Extractor
 from .voice import listen, speak
 from .config import (debug_enabled, debug_verbose, debug_log_dir,
                      debug_retention_days, debug_rotation,
-                     chat_history_size, formatter_enabled)
+                     chat_history_size, history_max_tokens,
+                     formatter_enabled)
 
 
 async def main_async() -> None:
@@ -46,7 +47,8 @@ async def main_async() -> None:
     pipeline = Pipeline(
         router=Router(llm=agents.general_llm, prompt=agents.router_prompt),
         executor=Executor(agents=agents),
-        history=History(max_turns=chat_history_size()),
+        history=History(max_turns=chat_history_size(),
+                        max_tokens=history_max_tokens()),
         formatter=Formatter(enabled=formatter_enabled()),
         extractor=Extractor(),
     )

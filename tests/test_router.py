@@ -74,25 +74,24 @@ async def test_llm_general():
     print("  LLM 'no' → general: OK")
 
 
-async def test_regex_no_false_chain_from_enriched():
-    """Regex runs on original input, not enriched.  Even if enriched contains
-    'screen', the original 'move firefox' is action-only → general."""
+async def test_regex_action_only_no_false_vision():
+    """Regex runs on the current input only — no history contamination.
+    Even if history mentioned 'screen', plain action keywords route to general."""
     r = Router(llm=FakeLLM("no"))
-    agents = await r.route("move firefox to workspace 2",
-                           enriched="[History: what is on my screen] User: move firefox to workspace 2")
+    agents = await r.route("move firefox to workspace 2")
     assert agents == ["general"], f"Expected [general], got {agents}"
-    print("  no false chain from history words: OK")
+    print("  move (action) → general, no false chain from missing screen: OK")
 
 
-async def test_llm_with_enriched_context():
-    """LLM receives enriched context and answers 'yes' when history mentions
-    the screen, routing a vague 'describe it again' to vision."""
-    r = Router(llm=FakeLLM("yes"))
+async def test_llm_no_history_bias():
+    """LLM evaluates only the current input — no history enrichment.
+    'describe it again' has no screen keywords, so an LLM answering 'no'
+    routes to general (history context no longer biases the decision)."""
+    r = Router(llm=FakeLLM("no"))
     r.prompt = "Is the user asking about their screen?"
-    agents = await r.route("describe it again",
-                           enriched="[History: what is on my screen] User: describe it again")
-    assert agents == ["vision"]
-    print("  enriched context → LLM routes to vision: OK")
+    agents = await r.route("describe it again")
+    assert agents == ["general"]
+    print("  no history bias → ambiguous query routes to general: OK")
 
 
 async def test_empty_prompt_skips_llm():
@@ -124,8 +123,8 @@ async def main():
     await test_regex_move()
     await test_llm_vision()
     await test_llm_general()
-    await test_regex_no_false_chain_from_enriched()
-    await test_llm_with_enriched_context()
+    await test_regex_action_only_no_false_vision()
+    await test_llm_no_history_bias()
     await test_empty_prompt_skips_llm()
     await test_llm_exception_graceful()
     print()

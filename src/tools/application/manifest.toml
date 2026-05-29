@@ -2,3 +2,4 @@
 name = "application"
 description = "Open and close desktop applications"
 prompt_hint = "- Open and close applications"
+unavailable_message = "I cannot open or close applications right now — the application tools are not enabled."

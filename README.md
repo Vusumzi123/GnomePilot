@@ -10,11 +10,11 @@ Fits within 12 GB VRAM, works down to a single 2.7 GB model (qwen3.5:2b).
 ## Architecture
 
 ```
-main.py ──► Pipeline ──► Enrich ──► Route ──► Build ──► Execute ──► Format ──► Store
-               │            │          │         │          │           │          │
-               │        (History)   (Router)  (History)  (Executor)  (Formatter) (History)
+main.py ──► Pipeline ──► Route ──► Build ──► Execute ──► Format ──► Store
+               │            │         │          │           │          │
+               │        (Router)   (History)  (Executor)  (Formatter) (History)
                │
-               └──► Agents (Ollama ×3 + MCP subprocess + LangGraph agents)
+               └──► Agents (LLM ×3 + MCP subprocess + LangGraph agents)
                          │
                          └──► MCP Server (auto-discovered skills, config-togglable)
 ```
@@ -23,10 +23,9 @@ main.py ──► Pipeline ──► Enrich ──► Route ──► Build ─�
 
 | Stage | Class | File | What it does |
 |---|---|---|---|
-| Enrich | `History` | `src/history.py` | Prepends recent chat context for routing |
-| Route | `Router` | `src/router.py` | Hybrid regex + LLM yes/no classifier |
-| Build | `History` | `src/history.py` | Constructs LangChain message list with history |
-| Execute | `Executor` | `src/executor.py` | Runs agents in sequence, handles chaining |
+| Route | `Router` | `src/router.py` | Hybrid regex + LLM yes/no classifier (raw input, no history) |
+| Build | `History` | `src/history.py` | Constructs LangChain message list with typed history pairs |
+| Execute | `Executor` | `src/executor.py` | Runs agents in sequence, handles vision→general chaining |
 | Format | `Formatter` | `src/formatter.py` | Regex cleanup of LLM output |
 | Store | `History` | `src/history.py` | Appends turn to conversation memory |
 
@@ -39,14 +38,12 @@ main.py ──► Pipeline ──► Enrich ──► Route ──► Build ─�
 
 ### Routing
 
-Three-tier hybrid approach:
+Two-tier hybrid approach:
 
-1. **History enrichment** — recent user queries prepended as `[History: ...]` prefix,
-   letting the router resolve anaphora ("describe it again" after a vision turn).
-2. **Regex fast-path** — catches obvious screen/action keywords in the **original**
-   input only (avoids false positives from history contamination).
-3. **LLM fallback** — binary yes/no question for ambiguous queries, receives the
-   enriched input with history context. Reliable even on 2B models.
+1. **Regex fast-path** — catches obvious screen/action keywords in the **original**
+   input only (no history contamination).
+2. **LLM fallback** — binary yes/no question for ambiguous queries, receives only
+   the current user input. Wrapped with 15s timeout — on timeout falls back to general.
 
 Screen + action → **chain mode**: vision runs first, its output injected as
 context to the general agent.
@@ -63,15 +60,16 @@ When the user says *"Look at my screen and open that app"*:
 
 The `Executor` detects when the LLM calls the same tool with the same arguments
 more than once (looping) and prepends a warning to the response. Combined with
-a recursion limit of 5, this prevents infinite retry loops.
+a configurable recursion limit (default 10), this prevents infinite retry loops.
 
 ### Model Management
 
 - Both agents default to separate models (e.g. llama3.1:8b + qwen3.5:2b)
 - Set `unified_model` to force one model for both agents (eliminates VRAM swapping)
-- Context window configurable via `num_ctx` (default 8192, qwen supports 32768)
+- Context window configurable via `num_ctx` (default 32768)
 - Vision agent auto-resizes screenshots (800px max) to reduce VRAM
 - `Agents.restart()` re-spawns the MCP subprocess for live config changes
+- LLM calls guarded by configurable timeouts (router: 15s, executor: 60s)
 
 ---
 
@@ -92,32 +90,52 @@ GnomePilot/
 │   ├── executor.py              # Agent chain runner with deduplication
 │   ├── extractor.py             # Response text + tool call extraction
 │   ├── formatter.py             # Regex response cleanup
-│   ├── history.py               # Chat turns, message building, routing enrichment
+│   ├── history.py               # Chat turns, message building, token-budget trimming
 │   ├── main.py                  # CLI + TTS entry point
 │   ├── pipeline.py              # Pipeline coordinator + Context dataclass
 │   ├── router.py                # Hybrid regex + LLM routing
 │   ├── voice.py                 # Piper TTS (speak) + STT stub (listen)
 │   └── tools/
-│       ├── __init__.py          # Auto-discovery skill loader
+│       ├── __init__.py          # Auto-discovery skill loader + _is_skill_enabled()
 │       ├── _registry.py         # Deferred @tool() decorator
 │       ├── server.py            # MCP stdio server + reload_tools()
-│       ├── application.py       # Open/close desktop apps
-│       ├── desktop_index.py     # .desktop file scanner + resolve
-│       ├── fuzzy_match.py       # Generic string scorer (reusable)
-│       ├── package_manager.py   # Search packages & write install guides (pacman + AUR/yay)
-│       ├── vision.py            # Screenshot capture + Ollama analysis
-│       ├── web_search.py        # DuckDuckGo web search
-│       └── window_manager.py    # Move windows via GNOME Shell Extension
+│       ├── desktop_index.py     # .desktop file scanner + resolve (shared helper)
+│       ├── fuzzy_match.py       # Generic string scorer (shared helper)
+│       ├── application/         # Open/close desktop apps
+│       │   ├── __init__.py
+│       │   ├── manifest.toml
+│       │   └── config.toml
+│       ├── package_manager/     # Search packages & write install guides
+│       │   ├── __init__.py
+│       │   ├── manifest.toml
+│       │   └── config.toml
+│       ├── vision/              # Screenshot capture + analysis
+│       │   ├── __init__.py
+│       │   ├── manifest.toml
+│       │   └── config.toml
+│       ├── web_search/          # DuckDuckGo web search
+│       │   ├── __init__.py
+│       │   ├── manifest.toml
+│       │   └── config.toml
+│       └── window_manager/      # Move windows via GNOME Shell Extension
+│           ├── __init__.py
+│           ├── manifest.toml
+│           └── config.toml
 ├── tests/
 │   ├── test_agents.py               # Agent lifecycle tests
+│   ├── test_application.py          # App resolve & launch tests
 │   ├── test_close.py                # DBus window close tests
+│   ├── test_config.py               # Config reader tests
 │   ├── test_executor.py             # Executor chain + dedup tests
 │   ├── test_extractor.py            # Response extraction tests
 │   ├── test_formatter.py            # Formatter regex tests
+│   ├── test_fuzzy_match.py          # Fuzzy string match tests
+│   ├── test_handlers.py             # Unavailable skill handler tests
 │   ├── test_history.py              # History management tests
+│   ├── test_package_manager.py      # Install guide generation tests
 │   ├── test_pipeline.py             # Full pipeline integration tests
 │   ├── test_router.py               # Router regex + LLM tests
-│   ├── test_skill_manifest.py       # TOML manifest tests
+│   ├── test_skill_manifest.py       # TOML manifest parsing tests
 │   ├── test_skill_registry.py       # Deferred @tool() registry tests
 │   └── test_web_search.py           # DuckDuckGo web search tests
 ├── requirements.txt             # Python dependencies
@@ -149,22 +167,23 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
     "orchestrator": "llama3.1:8b",
     "vision": "qwen3.5:2b"
   },
-  "unified_model": "qwen3.5:2b",
+  "unified_model": null,
   "orchestrator": {
     "temperature": 0,
-    "num_ctx": 8192,
-    "chat_history_size": 10
+    "num_ctx": 32768,
+    "chat_history_size": 10,
+    "history_max_tokens": 2000,
+    "recursion_limit": 10,
+    "router_timeout": 15,
+    "executor_timeout": 60
   },
   "screenshots": {
     "directory": "/tmp/os-assistant/screenshots",
     "max_retention": 10,
-    "unload_before_analysis": false
+    "unload_before_analysis": true
   },
   "formatter": {
     "enabled": true
-  },
-  "install_guides": {
-    "directory": "install_guides"
   },
   "debug": {
     "enabled": false,
@@ -172,58 +191,56 @@ Installed separately at `~/.local/share/gnome-shell/extensions/`:
     "log_dir": "logs",
     "retention_days": 7,
     "rotation": "10 MB"
-  },
-  "skills": {
-    "package_manager": true
   }
 }
 ```
 
 | Key | Type | Default | Purpose |
-|---|---|---|---|
+|---|---|---|---|---|
 | `models.orchestrator` | string | `llama3.1:8b` | Model for general agent |
 | `models.vision` | string | `qwen3.5:4b` | Model for vision agent |
-| `unified_model` | string\|null | `null` | Single model for both agents |
+| `unified_model` | string\|null | `null` | Single model for both agents (overrides per-role configs) |
 | `orchestrator.temperature` | float | `0` | LLM temperature |
-| `orchestrator.num_ctx` | int | `8192` | Context window size (`ollama num_ctx`) |
+| `orchestrator.num_ctx` | int | `32768` | Context window size (`ollama num_ctx`) |
 | `orchestrator.chat_history_size` | int | `10` | Conversation turns to remember (0 = disabled) |
+| `orchestrator.history_max_tokens` | int | `2000` | Token budget for chat history (chars//4 estimation) |
 | `orchestrator.recursion_limit` | int | `10` | Max LLM-tool steps per agent call |
+| `orchestrator.router_timeout` | int | `15` | Router LLM call timeout in seconds |
+| `orchestrator.executor_timeout` | int | `60` | Per-agent execution timeout in seconds |
 | `screenshots.directory` | string | `/tmp/os-assistant/screenshots` | Screenshot storage |
 | `screenshots.max_retention` | int | `10` | Max screenshots (FIFO) |
 | `screenshots.unload_before_analysis` | bool | `true` | Unload other models before vision |
-| `install_guides.directory` | string | `install_guides` | Output directory for generated install guide MD files |
 | `formatter.enabled` | bool | `true` | Enable regex response formatter |
 | `debug.enabled` | bool | `false` | Master toggle for debug logging |
 | `debug.verbose` | bool | `false` | Full LLM prompt dumps when true |
 | `debug.log_dir` | string | `"logs"` | Persistent log directory |
 | `debug.retention_days` | int | `7` | Log file retention |
 | `debug.rotation` | string | `"10 MB"` | Log file rotation size |
-| `skills.<name>` | bool | `true` | Enable/disable a skill module |
 
 ### Skills
 
-Each skill module in `src/tools/` can be toggled on/off:
+Each skill module in `src/tools/<name>/` can be toggled via its own `config.toml`:
 
-```json
-{
-  "skills": {
-    "application": true,
-    "package_manager": false,
-    "window_manager": true,
-    "vision": true
-  }
-}
+```toml
+[skill]
+enabled = true
 ```
 
-| Skill | Module | Tools provided |
-|---|---|---|---|
-| `application` | `application.py` | Open/close desktop apps (DBus window close with fuzzy matching) |
-| `package_manager` | `package_manager.py` | Search (pacman/AUR) + write install guides (does NOT install) |
-| `vision` | `vision.py` | Screenshot capture + visual analysis |
-| `web_search` | `web_search.py` | DuckDuckGo web search for current facts |
-| `window_manager` | `window_manager.py` | Move windows between workspaces |
+For backward compatibility, `config.json` also supports an optional override:
 
-Skills default to enabled. Only add entries to **disable** a skill.
+```json
+{ "skills": { "package_manager": false } }
+```
+
+| Skill | Module directory | Tools provided |
+|---|---|---|
+| `application` | `src/tools/application/` | Open/close desktop apps (DBus window close with fuzzy matching) |
+| `package_manager` | `src/tools/package_manager/` | Search (pacman/AUR) + write install guides (does NOT install) |
+| `vision` | `src/tools/vision/` | Screenshot capture + visual analysis |
+| `web_search` | `src/tools/web_search/` | DuckDuckGo web search for current facts |
+| `window_manager` | `src/tools/window_manager/` | Move windows between workspaces |
+
+Skills default to enabled. Each skill has its own `manifest.toml` (prompt hint + unavailable message) and `config.toml` (enable/disable + per-skill settings).
 
 ### Model Size Reference
 
@@ -281,13 +298,10 @@ or assistant can pick the right one.
 
 ### Chat History
 
-Remembers up to `chat_history_size` turns. History is injected as
-`(Human, AI)` message pairs into the general agent's context.
+Remembers up to `chat_history_size` turns within a token budget (`history_max_tokens`).
+History is injected as typed `(Human, AI)` message pairs into the general agent's context.
+Oldest turns are dropped when either the turn count or estimated token budget is exceeded.
 Vision agent receives no history (isolated context per turn).
-
-Context-aware routing enrichment prepends recent user queries as a
-`[History: ...]` prefix — the router can disambiguate "describe it again"
-after a vision turn without leaking history into the regex path.
 
 ### Formatter
 
@@ -455,25 +469,37 @@ python run_tests.py test_router     # single suite
 |---|---|---|
 | `test_extractor` | Unit | Response text + tool call extraction |
 | `test_formatter` | Unit | Regex cleanup (emoji, fences, metadata) |
-| `test_history` | Unit | Chat turns, message building, enrichment |
+| `test_fuzzy_match` | Unit | String scorer: exact, prefix, substring matching |
+| `test_history` | Unit | Chat turns, message building, token-budget trimming |
 | `test_router` | Unit | Regex + mock LLM routing |
-| `test_skill_manifest` | Unit | TOML manifest parsing |
+| `test_skill_manifest` | Unit | TOML manifest parsing + prompt rendering |
 | `test_skill_registry` | Unit | Deferred @tool() decorator |
+| `test_config` | Unit | Config reader helpers, model config normalization |
+| `test_handlers` | Unit | Unavailable skill handler responses |
+| `test_application` | Unit | Desktop file resolution, app launch/close |
+| `test_package_manager` | Unit | Install guide generation |
+| `test_web_search` | Unit | DuckDuckGo search (mock HTTP) |
 | `test_agents` | Integration | MCP start, agent creation, shutdown |
 | `test_executor` | Integration | Agent chaining, tool call deduplication |
 | `test_pipeline` | Integration | Full pipeline with real agents + chain |
 | `test_close` | Integration | DBus window close with fuzzy matching |
-| `test_web_search` | Integration | DuckDuckGo web search |
 
 ---
 
 ## Design Documents
 
 | File | Topic |
-|---|---|
-| `PLAN_REFACTOR_PIPELINE.md` | Pipeline architecture design (phases 1–4) |
+|---|---|---|
+| `PLAN_MULTI_PROVIDER.md` | Multi-provider model support (Ollama + OpenAI-compatible) |
+| `PLAN_PROMPT_HISTORY_REFACTOR.md` | History decoupling, prompt simplification, LLM timeouts |
+| `PLAN_SKILL_REFACTOR.md` | Per-folder skill structure with auto-discovery |
+| `PLAN_UNAVAILABLE_HANDLERS.md` | Unavailable skill handler pattern |
+| `PLAN_WEB_SEARCH.md` | DuckDuckGo web search skill |
+| `PLAN_SKILL_AUTO_DISCOVERY.md` | Auto-discovery with deferred registry & manifests |
 | `PLAN_CLOSE_WINDOW_DBUS.md` | DBus window close with fuzzy matching |
-| `PLAN_SKILL_AUTO_DISCOVERY.md` | Auto-discovery skills (deferred registry + manifests) |
+| `PLAN_REFACTOR_PIPELINE.md` | Pipeline architecture design |
+| `PLAN_INSTALL_GUIDES.md` | Install guide generation |
+| `PLAN_DEP_SECURITY.md` | Dependency security audit |
 
 ---
 

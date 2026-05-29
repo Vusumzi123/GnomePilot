@@ -3,7 +3,7 @@
     "orchestrator": "llama3.1:8b",
     "vision": "qwen3.5:2b"
   },
-  "unified_model": "qwen3.5:4b",
+  "unified_model": "qwen3.5:9b",
   "screenshots": {
     "directory": "/tmp/os-assistant/screenshots",
     "max_retention": 10,
@@ -14,7 +14,7 @@
   },
   "orchestrator": {
     "temperature": 0,
-    "num_ctx": 8192,
+    "num_ctx": 32768,
     "chat_history_size": 10
   },
   "debug": {
@@ -23,9 +23,6 @@
     "log_dir": "logs",
     "retention_days": 7,
     "rotation": "10 MB"
-  },
-  "install_guides": {
-    "directory": "install_guides"
   },
   "skills": {
   }

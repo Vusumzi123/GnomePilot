@@ -1,0 +1,5 @@
+[skill]
+enabled = true
+
+[install_guides]
+directory = "install_guides"

@@ -12,6 +12,7 @@ from src.extractor import Extractor
 from src.router import Router
 from src.executor import Executor
 from src.config import recursion_limit as cfg_recursion_limit
+from src.config import executor_timeout as cfg_executor_timeout
 
 try:
     from langgraph.errors import GraphRecursionError
@@ -23,7 +24,6 @@ except ImportError:
 class Context:
     """Data bag carried through the pipeline stages."""
     raw_input: str
-    enriched_input: str = ""
     agents: list[str] = field(default_factory=list)
     messages: list = field(default_factory=list)
     response: str = ""
@@ -78,31 +78,28 @@ class Pipeline:
         """Run the full pipeline for one user request.
 
         Stages:
-          1. enrich  — prepend history context (History)
-          2. route   — decide which agents to invoke (Router)
-          3. build   — construct LangChain message list (History)
-          4. execute — run agents, extract responses (Executor)
-          5. format  — regex cleanup of LLM output (Formatter)
-          6. store   — add turn to history (History)
+          1. route   — decide which agents to invoke (Router)
+          2. build   — construct LangChain message list (History)
+          3. execute — run agents, extract responses (Executor)
+          4. format  — regex cleanup of LLM output (Formatter)
+          5. store   — add turn to history (History)
 
         Returns the formatted final response.
         """
         ctx = Context(raw_input=user_input)
 
         try:
-            # Stage 1: Enrich input with chat context
-            ctx.enriched_input = self.history.enrich_for_routing(user_input)
+            # Stage 1: Route — uses raw user input only, no history contamination
+            ctx.agents = await self.router.route(user_input)
 
-            # Stage 2: Route
-            ctx.agents = await self.router.route(user_input, ctx.enriched_input)
-
-            # Stage 3: Build messages (history is a separate concern from routing enrich)
+            # Stage 2: Build messages (history is a separate concern from routing)
             ctx.messages = self.history.build_messages(user_input, include_history=True)
 
             # Stage 4: Execute agents
             result = await self.executor.execute(
                 ctx.agents, ctx.messages, user_input=user_input,
                 recursion_limit=cfg_recursion_limit(),
+                timeout=cfg_executor_timeout(),
             )
             ctx.response = result.text
             ctx.tool_calls = result.tool_calls

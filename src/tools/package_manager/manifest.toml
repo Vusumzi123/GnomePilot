@@ -2,3 +2,4 @@
 name = "package_manager"
 description = "Search packages and write install guides"
 prompt_hint = "- Search packages and write install guides (does NOT install)"
+unavailable_message = "I cannot search or install packages right now — the package management tools are not enabled."
