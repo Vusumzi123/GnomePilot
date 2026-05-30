@@ -1,6 +1,54 @@
-# Executive Summary — 2026-05-28 (Multi-Provider Phase 1)
+# Executive Summary — 2026-05-28 (Multi-Provider Phase 1 + 2, Vision Refactor)
 
 ## Changes Executed
+
+### Vision: Provider-Aware Image Analysis
+
+The vision skill's `_analyze_image()` was hardcoded to `ollama.chat()` regardless of configured provider. Refactored to dispatch by provider — Ollama uses `ollama.chat()` directly, OpenAI-compatible providers use the `openai` Python client with the vision API format (`image_url` content blocks).
+
+**Files modified:**
+
+| File | Change |
+|------|--------|
+| `src/tools/vision/__init__.py` | Replaced `get_model` import with `model_config`. Removed `_vision_model()` helper. Added `_OPENAI_COMPAT` set, `_VISION_PROMPT` constant, `_analyze_with_ollama()`, `_analyze_with_openai()`. `_analyze_image()` now dispatches by provider. `_unload_other_models()` skips when vision provider is not Ollama. Updated `tool_capture_screen` docstring. |
+
+**Provider dispatch in `_analyze_image()`:**
+
+| Vision provider | Analysis function | Format |
+|----------------|-------------------|--------|
+| `ollama` | `_analyze_with_ollama()` | `ollama.chat()` with `images=[base64]` |
+| `openai`, `deepseek`, `qwen`, `openrouter` | `_analyze_with_openai()` | `openai.OpenAI().chat.completions.create()` with `image_url` content blocks |
+| unknown | Error message | "Vision analysis not supported for provider 'X'" |
+
+**Caveat:** DeepSeek V4 Flash does **not** support vision (text-only model). Using it as a vision provider will get a 400 error from the API. Use `gpt-4o`, `qwen-vl-max`, or a compatible vision model.
+
+---
+
+### Phase 2: DeepSeek, Qwen, OpenRouter (PLAN_MULTI_PROVIDER.md)
+
+Added 3 OpenAI-compatible providers. Each uses `ChatOpenAI` with a different `base_url`. No new dependencies — `langchain-openai` already added in Phase 1.
+
+**Files modified:**
+
+| File | Change |
+|------|--------|
+| `src/model_factory.py` | Added `deepseek`, `qwen`, `openrouter` to `_PROVIDERS` dispatch table. Extracted `_OPENAI_COMPAT_KWARGS` set to avoid duplication across 4 providers sharing the same kwarg allowlist. |
+| `config.json.example` | Added `_comment`, `_per_role_example`, and `_unified_example` keys showing how to configure all 5 providers. |
+| `tests/test_model_factory.py` | Added 4 tests: `test_deepseek_returns_chatopenai`, `test_qwen_returns_chatopenai`, `test_openrouter_returns_chatopenai`, `test_openai_compat_kwargs_passthrough`. |
+
+**Provider table (current):**
+
+| Provider | Class | Default base_url | Phase |
+|----------|-------|-----------------|-------|
+| `ollama` | `ChatOllama` | — | 1 |
+| `openai` | `ChatOpenAI` | `https://api.openai.com/v1` | 1 |
+| `deepseek` | `ChatOpenAI` | `https://api.deepseek.com` | 2 |
+| `qwen` | `ChatOpenAI` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 2 |
+| `openrouter` | `ChatOpenAI` | `https://openrouter.ai/api/v1` | 2 |
+
+No changes to `test_config.py` or `test_agents.py` — config schema unchanged (just new `provider` values), agents code unchanged (the factory handles dispatch).
+
+---
 
 ### Phase 1: Ollama + OpenAI Multi-Provider Support (PLAN_MULTI_PROVIDER.md)
 
@@ -137,13 +185,13 @@ Every change is backward compatible:
 | test_fuzzy_match | PASS | ~15 | 0.0s |
 | test_handlers | PASS | ~2 | 0.5s |
 | test_history | PASS | ~16 | 0.3s |
-| **test_model_factory** | **PASS** | **~8** | **0.5s** |
+| **test_model_factory** | **PASS** | **~12** | **0.5s** |
 | test_package_manager | PASS | ~4 | 0.3s |
 | test_router | PASS | ~11 | 0.7s |
 | test_skill_manifest | PASS | ~11 | 1.1s |
 | test_skill_registry | PASS | ~4 | 0.0s |
 | test_web_search | PASS | ~4 | 11.3s |
-| **Unit total** | **13/13** | **~140** | **16.5s** |
+| **Unit total** | **13/13** | **~144** | **14.9s** |
 | test_agents (unit + integration) | PASS | ~7 | 2.8s |
 
 ---
@@ -222,7 +270,7 @@ python3 -c "from src.agents import Agents; print('OK')"
 ```sh
 python3 run_tests.py --unit
 ```
-**Expected:** 13/13 suites pass (~140 assertions), including the new `test_model_factory` suite.
+**Expected:** 13/13 suites pass (~144 assertions), including the new `test_model_factory` suite.
 
 ### 3. Config bootstrap (fresh start simulation)
 ```sh
@@ -329,4 +377,4 @@ with patch('src.model_factory._import_class', return_value=mock_cls):
 
 ## Verdict
 
-Phase 1 of `PLAN_MULTI_PROVIDER.md` is complete. The assistant now supports Ollama and OpenAI LLMs with per-role configuration, automatic config bootstrap, and a clean factory pattern for extension. All 13 unit test suites pass (140 assertions). Backward compatibility is preserved — existing `config.json` files work identically with zero changes needed. The foundation is laid for Phase 2 (DeepSeek, Qwen, OpenRouter) which will be a one-line addition per provider to the dispatch table.
+Phases 1 and 2 of `PLAN_MULTI_PROVIDER.md` are complete. The assistant now supports **5 providers** (Ollama, OpenAI, DeepSeek, Qwen, OpenRouter) with per-role configuration, automatic config bootstrap, and a clean factory pattern. All 13 unit test suites pass (~144 assertions). Backward compatibility is preserved — existing `config.json` files with string model names work identically. Phase 3 (Google Gemini + Anthropic Claude) is the only remaining item from the plan.

@@ -151,6 +151,86 @@ def test_openai_unknown_kwarg_filtered():
     print("  openai unknown kwarg filtered: OK")
 
 
+# ── Phase 2: DeepSeek, Qwen, OpenRouter ──
+
+
+def test_deepseek_returns_chatopenai():
+    """DeepSeek config → ChatOpenAI with correct base_url."""
+    mock_cls = MagicMock()
+    mock_cls.return_value = MagicMock()
+
+    with _mock_import_class(mock_cls)():
+        create_llm({
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "api_key": "sk-test",
+        })
+
+    kwargs = mock_cls.call_args[1]
+    assert kwargs.get("model") == "deepseek-chat"
+    assert kwargs.get("base_url") == "https://api.deepseek.com"
+    assert kwargs.get("api_key") == "sk-test"
+    print("  deepseek → ChatOpenAI with deepseek base_url: OK")
+
+
+def test_qwen_returns_chatopenai():
+    """Qwen config → ChatOpenAI with dashscope base_url."""
+    mock_cls = MagicMock()
+    mock_cls.return_value = MagicMock()
+
+    with _mock_import_class(mock_cls)():
+        create_llm({
+            "provider": "qwen",
+            "model": "qwen-turbo",
+            "api_key": "sk-test",
+        })
+
+    kwargs = mock_cls.call_args[1]
+    assert kwargs.get("model") == "qwen-turbo"
+    assert kwargs.get("base_url") == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    print("  qwen → ChatOpenAI with dashscope base_url: OK")
+
+
+def test_openrouter_returns_chatopenai():
+    """OpenRouter config → ChatOpenAI with openrouter.ai base_url."""
+    mock_cls = MagicMock()
+    mock_cls.return_value = MagicMock()
+
+    with _mock_import_class(mock_cls)():
+        create_llm({
+            "provider": "openrouter",
+            "model": "openai/gpt-4o",
+            "api_key": "sk-test",
+        })
+
+    kwargs = mock_cls.call_args[1]
+    assert kwargs.get("model") == "openai/gpt-4o"
+    assert kwargs.get("base_url") == "https://openrouter.ai/api/v1"
+    print("  openrouter → ChatOpenAI with openrouter base_url: OK")
+
+
+def test_openai_compat_kwargs_passthrough():
+    """max_tokens, top_p, api_key all pass through for OpenAI-compat providers."""
+    for provider in ("deepseek", "qwen", "openrouter"):
+        mock_cls = MagicMock()
+        mock_cls.return_value = MagicMock()
+
+        with _mock_import_class(mock_cls)():
+            create_llm({
+                "provider": provider,
+                "model": "test-model",
+                "api_key": "sk-test",
+                "max_tokens": 1024,
+                "top_p": 0.9,
+            })
+
+        kwargs = mock_cls.call_args[1]
+        assert kwargs.get("api_key") == "sk-test", f"{provider}: api_key missing"
+        assert kwargs.get("max_tokens") == 1024, f"{provider}: max_tokens missing"
+        assert kwargs.get("top_p") == 0.9, f"{provider}: top_p missing"
+    print("  openai-compat kwargs passthrough (deepseek, qwen, openrouter): OK")
+
+
 if __name__ == "__main__":
     test_ollama_returns_chatollama()
     test_openai_returns_chatopenai()
@@ -160,6 +240,11 @@ if __name__ == "__main__":
     test_callbacks_attached()
     test_ollama_unknown_kwarg_filtered()
     test_openai_unknown_kwarg_filtered()
+    # Phase 2
+    test_deepseek_returns_chatopenai()
+    test_qwen_returns_chatopenai()
+    test_openrouter_returns_chatopenai()
+    test_openai_compat_kwargs_passthrough()
     print()
     print("=" * 50)
     print("All model factory tests passed.")

@@ -1,4 +1,15 @@
 {
+  "_comment": "Copy to config.json and edit. Supported providers: ollama, openai, deepseek, qwen, openrouter.",
+  "_per_role_example": {
+    "models": {
+      "orchestrator": {"provider": "openai", "model": "gpt-4o", "api_key": "sk-..."},
+      "vision": {"provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-..."},
+      "router": {"provider": "qwen", "model": "qwen-turbo", "api_key": "sk-..."}
+    }
+  },
+  "_unified_example": {
+    "unified_model": {"provider": "openrouter", "model": "openai/gpt-4o", "api_key": "sk-..."}
+  },
   "models": {
     "orchestrator": "llama3.1:8b",
     "vision": "minicpm-v:8b"

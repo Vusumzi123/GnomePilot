@@ -146,7 +146,7 @@ Use `unified_model` to avoid VRAM swapping between agents.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **GnomePilot** (1345 symbols, 2151 relationships, 28 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **GnomePilot** (1444 symbols, 2339 relationships, 32 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

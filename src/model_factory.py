@@ -21,18 +21,27 @@ _logger = logging.getLogger(__name__)
 _PROVIDERS: dict[str, tuple[str, str | None]] = {
     "ollama": ("langchain_ollama.ChatOllama", None),
     "openai": ("langchain_openai.ChatOpenAI", "https://api.openai.com/v1"),
+    "deepseek": ("langchain_openai.ChatOpenAI", "https://api.deepseek.com"),
+    "qwen": ("langchain_openai.ChatOpenAI",
+              "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    "openrouter": ("langchain_openai.ChatOpenAI", "https://openrouter.ai/api/v1"),
 }
 
 # Allowed kwargs per provider. Unknown kwargs are silently dropped (debug log).
+_OPENAI_COMPAT_KWARGS = {
+    "model", "temperature", "stop", "callbacks",
+    "base_url", "api_key", "max_tokens", "top_p",
+}
+
 _PROVIDER_KWARGS: dict[str, set[str]] = {
     "ollama": {
         "model", "temperature", "stop", "callbacks",
         "num_ctx", "keep_alive",
     },
-    "openai": {
-        "model", "temperature", "stop", "callbacks",
-        "base_url", "api_key", "max_tokens", "top_p",
-    },
+    "openai": _OPENAI_COMPAT_KWARGS,
+    "deepseek": _OPENAI_COMPAT_KWARGS,
+    "qwen": _OPENAI_COMPAT_KWARGS,
+    "openrouter": _OPENAI_COMPAT_KWARGS,
 }
 
 
