@@ -1,19 +1,21 @@
 """Agents — LLM and LangGraph agent lifecycle management.
 
-Creates ChatOllama instances, starts the MCP tool server, discovers tools,
-builds ReAct agents, and handles graceful VRAM cleanup.
+Creates LLM instances via the model factory, starts the MCP tool server,
+discovers tools, builds ReAct agents, and handles graceful VRAM cleanup.
 """
 
 import asyncio
 import os
 import sys
 
-from langchain_ollama import ChatOllama
+from langchain_core.language_models import BaseChatModel
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
-from src.config import (get_model, get_setting, read_prompt, unified_model,
-                        num_ctx, debug_enabled, debug_verbose)
+from src.config import (get_setting, read_prompt, num_ctx,
+                        model_config, unified_model_config,
+                        debug_enabled, debug_verbose)
+from src.model_factory import create_llm
 from src.tools import _build_tool_list
 from src.tools.vision import handler as _vision_handler
 from src.tools.application import handler as _application_handler
@@ -49,29 +51,47 @@ class Agents:
     Call shutdown() to unload Ollama models from VRAM.
     """
 
-    def __init__(self, model: str | None = None,
-                 vision_model: str | None = None,
-                 temperature: float | None = None):
-        model = model or get_model("orchestrator", "llama3.1:8b")
-        vision_model = vision_model or get_model("vision", "qwen3.5:4b")
-        temperature = (temperature if temperature is not None
-                       else get_setting("orchestrator.temperature", 0))
-        ctx = num_ctx()
+    def __init__(self, **kwargs):
+        # Config-driven LLM creation: model, vision_model, temperature
+        # params are ignored (kept as **kwargs for backward compat).
 
-        unified = unified_model()
-        if unified:
-            model = vision_model = unified
+        unified = unified_model_config()
+        if unified is not None:
+            llm_cfg = vision_cfg = router_cfg = dict(unified)
+        else:
+            llm_cfg = model_config("orchestrator")
+            vision_cfg = model_config("vision")
+            router_cfg = model_config("router")
 
-        base_kwargs = {"num_ctx": ctx} if ctx else {}
+        # Inherit global defaults for keys not specified per-role
+        global_temp = get_setting("orchestrator.temperature", 0)
+        global_ctx = num_ctx()
 
-        cb_kwargs = {}
+        for cfg in (llm_cfg, vision_cfg, router_cfg):
+            if "temperature" not in cfg:
+                cfg["temperature"] = global_temp
+            if "num_ctx" not in cfg and global_ctx is not None:
+                cfg["num_ctx"] = global_ctx
+
+        # Router gets strict stop tokens (overrides any per-role value)
+        router_cfg = {**router_cfg, "temperature": 0, "stop": ["\n"]}
+
+        # Track which providers are in use (for shutdown decisions)
+        self._active_providers: set[str] = {
+            llm_cfg.get("provider", "ollama"),
+            vision_cfg.get("provider", "ollama"),
+            router_cfg.get("provider", "ollama"),
+        }
+
+        # Build callbacks if debug is enabled
+        callbacks = None
         if debug_enabled():
             from src.debug import DebugCallbackHandler
-            cb_kwargs = {"callbacks": [DebugCallbackHandler(verbose=debug_verbose())]}
+            callbacks = [DebugCallbackHandler(verbose=debug_verbose())]
 
-        self._general_llm = ChatOllama(model=model, temperature=temperature, **base_kwargs, **cb_kwargs)
-        self._vision_llm = ChatOllama(model=vision_model, temperature=temperature, **base_kwargs, **cb_kwargs)
-        self._router_llm = ChatOllama(model=model, temperature=0, stop=["\n"], **base_kwargs, **cb_kwargs)
+        self._general_llm = create_llm(llm_cfg, callbacks=callbacks)
+        self._vision_llm = create_llm(vision_cfg, callbacks=callbacks)
+        self._router_llm = create_llm(router_cfg, callbacks=callbacks)
 
         self.general_prompt = read_prompt("general", (
             "You are a helpful AI assistant running on CachyOS (Arch Linux with GNOME). "
@@ -132,7 +152,9 @@ class Agents:
         await self.start()
 
     async def shutdown(self) -> None:
-        """Gracefully unload all Ollama models from VRAM."""
+        """Gracefully unload Ollama models from VRAM if any role uses Ollama."""
+        if "ollama" not in self._active_providers:
+            return
         import ollama
         try:
             for m in ollama.ps().models:
@@ -155,6 +177,6 @@ class Agents:
         return self._vision_agent
 
     @property
-    def general_llm(self) -> ChatOllama:
+    def general_llm(self) -> BaseChatModel:
         """The LLM instance used by the general agent (reusable by Router)."""
         return self._general_llm

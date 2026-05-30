@@ -1,7 +1,7 @@
 """Skill: Screen capture and visual analysis.
 
-Uses XDG Desktop Portal for Wayland screenshots and Ollama vision models
-for image description.
+Uses XDG Desktop Portal for Wayland screenshots and provider-aware vision
+models (Ollama or OpenAI-compatible) for image description.
 
 Auto-discovered via @tool() decorator — no manual wiring needed.
 """
@@ -21,7 +21,8 @@ from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 from PIL import Image
 
-from src.config import get_model, screenshot_dir, screenshot_retention, unload_before_analysis
+from src.config import (model_config, screenshot_dir, screenshot_retention,
+                        unload_before_analysis)
 from .._registry import tool
 
 import tomllib
@@ -45,10 +46,6 @@ async def handler(input, config=None):
 
 
 SCREENSHOT_TIMEOUT = 20.0
-
-
-def _vision_model() -> str:
-    return get_model("vision", "minicpm-v:8b")
 
 
 def _take_screenshot(timeout: float = SCREENSHOT_TIMEOUT) -> str | None:
@@ -115,40 +112,99 @@ def _resize_image(path: str, max_dim: int = 800) -> str:
     return resized
 
 
+_OPENAI_COMPAT = frozenset({"openai", "deepseek", "qwen", "openrouter"})
+
+_VISION_PROMPT = "Describe what is on this screen in 1-2 concise sentences."
+
+
 def _analyze_image(image_path: str) -> str:
     """Send a resized base64-encoded image to the vision model for description.
+
+    Dispatches by provider: Ollama uses ``ollama.chat()`` directly;
+    OpenAI-compatible providers use the ``openai`` Python client.
     Cleans up the temporary resized copy after analysis.
     """
     small_path = _resize_image(image_path)
     data = base64.b64encode(Path(small_path).read_bytes()).decode()
+    cfg = model_config("vision")
+    provider = cfg.get("provider", "ollama")
+
+    try:
+        if provider == "ollama":
+            return _analyze_with_ollama(data, cfg)
+        elif provider in _OPENAI_COMPAT:
+            return _analyze_with_openai(data, cfg)
+        else:
+            return (
+                f"Vision analysis not supported for provider '{provider}'. "
+                f"Use an Ollama vision model (e.g. minicpm-v:8b) or an "
+                f"OpenAI-compatible model with vision support."
+            )
+    finally:
+        if small_path != image_path:
+            Path(small_path).unlink(missing_ok=True)
+
+
+def _analyze_with_ollama(base64_data: str, cfg: dict) -> str:
+    """Analyze image using Ollama's chat API with base64 image payload."""
     response = ollama.chat(
-        model=_vision_model(),
+        model=cfg["model"],
         messages=[
             {
                 "role": "user",
-                "content": "Describe what is on this screen in 1-2 concise sentences.",
-                "images": [data],
+                "content": _VISION_PROMPT,
+                "images": [base64_data],
             }
         ],
         keep_alive=0 if unload_before_analysis() else None,
     )
-    # Clean up resized file if it was created
-    if small_path != image_path:
-        Path(small_path).unlink(missing_ok=True)
     return response["message"]["content"]
+
+
+def _analyze_with_openai(base64_data: str, cfg: dict) -> str:
+    """Analyze image using an OpenAI-compatible chat completions API."""
+    import openai
+
+    client = openai.OpenAI(
+        base_url=cfg.get("base_url"),
+        api_key=cfg.get("api_key"),
+    )
+    response = client.chat.completions.create(
+        model=cfg["model"],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_data}",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+    return response.choices[0].message.content
 
 
 def _unload_other_models() -> None:
     """Free VRAM by unloading all models except the vision model.
-    Skipped when unload_before_analysis is false (both models fit in VRAM).
+
+    Skipped when unload_before_analysis is false or vision provider is not Ollama.
     """
+    cfg = model_config("vision")
+    if cfg.get("provider", "ollama") != "ollama":
+        return
     if not unload_before_analysis():
         return
     try:
+        vision_model = cfg["model"]
         running = ollama.ps()
         for m in running.models:
             name = m.name or m.model
-            if name and _vision_model() not in name:
+            if name and vision_model not in name:
                 ollama.generate(model=name, prompt="", keep_alive=0)
     except Exception:
         pass
@@ -202,7 +258,7 @@ def tool_capture_screen() -> str:
     """Capture the current screen and describe what is visible.
 
     Takes a screenshot via the system's screenshot portal (may show a
-    permission dialog) and analyzes the image using a local vision model
-    to describe what is currently on screen.
+    permission dialog) and analyzes the image using the configured vision
+    provider (Ollama or OpenAI-compatible) to describe what is on screen.
     """
     return _capture_and_analyze()

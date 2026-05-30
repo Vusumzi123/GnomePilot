@@ -1,0 +1,43 @@
+{
+  "_comment": "Copy to config.json and edit. Supported providers: ollama, openai, deepseek, qwen, openrouter.",
+  "_per_role_example": {
+    "models": {
+      "orchestrator": {"provider": "openai", "model": "gpt-4o", "api_key": "sk-..."},
+      "vision": {"provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-..."},
+      "router": {"provider": "qwen", "model": "qwen-turbo", "api_key": "sk-..."}
+    }
+  },
+  "_unified_example": {
+    "unified_model": {"provider": "openrouter", "model": "openai/gpt-4o", "api_key": "sk-..."}
+  },
+  "models": {
+    "orchestrator": "llama3.1:8b",
+    "vision": "minicpm-v:8b"
+  },
+  "unified_model": null,
+  "screenshots": {
+    "directory": "/tmp/os-assistant/screenshots",
+    "max_retention": 10,
+    "unload_before_analysis": false
+  },
+  "formatter": {
+    "enabled": true
+  },
+  "orchestrator": {
+    "temperature": 0,
+    "num_ctx": 32768,
+    "chat_history_size": 10,
+    "history_max_tokens": 2000,
+    "recursion_limit": 10,
+    "router_timeout": 15,
+    "executor_timeout": 60
+  },
+  "debug": {
+    "enabled": true,
+    "verbose": true,
+    "log_dir": "logs",
+    "retention_days": 7,
+    "rotation": "10 MB"
+  },
+  "skills": {}
+}

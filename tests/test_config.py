@@ -157,6 +157,141 @@ def test_mcp_required_env_keys():
     print("  MCP_ENV_KEYS: all required + no dupes: OK")
 
 
+# ── model_config / unified_model_config tests ──
+
+
+def test_model_config_string():
+    """String model value → normalized to {provider: ollama, model: ...}."""
+    with patch.object(config_module, "load_config", return_value={
+        "models": {"orchestrator": "llama3.1:8b"}
+    }):
+        cfg = config_module.model_config("orchestrator")
+        assert cfg == {"provider": "ollama", "model": "llama3.1:8b"}
+    print("  model_config string normalized: OK")
+
+
+def test_model_config_object():
+    """Object model value → passed through, default provider = ollama."""
+    with patch.object(config_module, "load_config", return_value={
+        "models": {
+            "orchestrator": {"provider": "openai", "model": "gpt-4o",
+                             "api_key": "sk-test"}
+        }
+    }):
+        cfg = config_module.model_config("orchestrator")
+        assert cfg["provider"] == "openai"
+        assert cfg["model"] == "gpt-4o"
+        assert cfg["api_key"] == "sk-test"
+    print("  model_config object passed through: OK")
+
+
+def test_model_config_object_defaults_provider():
+    """Object without provider → defaults to ollama."""
+    with patch.object(config_module, "load_config", return_value={
+        "models": {"vision": {"model": "minicpm-v:8b"}}
+    }):
+        cfg = config_module.model_config("vision")
+        assert cfg == {"provider": "ollama", "model": "minicpm-v:8b"}
+    print("  model_config object defaults provider: OK")
+
+
+def test_model_config_missing():
+    """Missing key → returns default Ollama config."""
+    with patch.object(config_module, "load_config", return_value={}):
+        cfg = config_module.model_config("orchestrator")
+        assert cfg["provider"] == "ollama"
+        assert "model" in cfg
+    print("  model_config missing → default: OK")
+
+
+def test_unified_model_config_string():
+    """String unified_model → normalized."""
+    with patch.object(config_module, "load_config", return_value={
+        "unified_model": "qwen3.5:9b"
+    }):
+        cfg = config_module.unified_model_config()
+        assert cfg == {"provider": "ollama", "model": "qwen3.5:9b"}
+    print("  unified_model_config string: OK")
+
+
+def test_unified_model_config_object():
+    """Object unified_model → passed through."""
+    with patch.object(config_module, "load_config", return_value={
+        "unified_model": {"provider": "openai", "model": "gpt-4o",
+                          "api_key": "sk-test"}
+    }):
+        cfg = config_module.unified_model_config()
+        assert cfg["provider"] == "openai"
+        assert cfg["model"] == "gpt-4o"
+    print("  unified_model_config object: OK")
+
+
+def test_unified_model_config_null():
+    """null unified_model → None."""
+    with patch.object(config_module, "load_config", return_value={
+        "unified_model": None
+    }):
+        assert config_module.unified_model_config() is None
+    print("  unified_model_config null → None: OK")
+
+
+def test_unified_model_config_missing():
+    """Missing unified_model key → None."""
+    with patch.object(config_module, "load_config", return_value={}):
+        assert config_module.unified_model_config() is None
+    print("  unified_model_config missing → None: OK")
+
+
+# ── bootstrap tests ──
+
+
+def test_bootstrap_creates_if_missing():
+    """No config.json → file created with default content."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Patch CONFIG_PATH to a temp location
+        fake_path = Path(tmpdir) / "config.json"
+        with patch.object(config_module, "CONFIG_PATH", fake_path):
+            assert not fake_path.exists()
+            result = config_module.bootstrap_config_if_missing()
+            assert result is True
+            assert fake_path.exists()
+            # Verify it's valid JSON with expected keys
+            cfg = config_module.load_config()
+            assert "models" in cfg
+            assert "orchestrator" in cfg
+    print("  bootstrap creates config: OK")
+
+
+def test_bootstrap_skips_if_exists():
+    """Existing config.json → no change."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_path = Path(tmpdir) / "config.json"
+        fake_path.write_text('{"custom": true}')
+        with patch.object(config_module, "CONFIG_PATH", fake_path):
+            result = config_module.bootstrap_config_if_missing()
+            assert result is False
+            assert fake_path.read_text() == '{"custom": true}'
+    print("  bootstrap skips if exists: OK")
+
+
+def test_bootstrap_default_content():
+    """Generated config matches expected structure."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_path = Path(tmpdir) / "config.json"
+        with patch.object(config_module, "CONFIG_PATH", fake_path):
+            config_module.bootstrap_config_if_missing()
+            cfg = config_module.load_config()
+            # Verify key sections exist
+            assert cfg["models"]["orchestrator"] == "llama3.1:8b"
+            assert cfg["models"]["vision"] == "minicpm-v:8b"
+            assert cfg["unified_model"] is None
+            assert cfg["orchestrator"]["temperature"] == 0
+            assert cfg["orchestrator"]["num_ctx"] == 32768
+            # install_guides should NOT be in the default — handled by fallback
+            assert "install_guides" not in cfg
+    print("  bootstrap default content: OK")
+
+
 if __name__ == "__main__":
     test_load_config_valid()
     test_load_config_returns_default_on_missing()
@@ -175,6 +310,18 @@ if __name__ == "__main__":
     test_install_guides_dir_creates_directory()
     test_install_guides_dir_reads_per_skill_config()
     test_mcp_required_env_keys()
+    # New multi-provider tests
+    test_model_config_string()
+    test_model_config_object()
+    test_model_config_object_defaults_provider()
+    test_model_config_missing()
+    test_unified_model_config_string()
+    test_unified_model_config_object()
+    test_unified_model_config_null()
+    test_unified_model_config_missing()
+    test_bootstrap_creates_if_missing()
+    test_bootstrap_skips_if_exists()
+    test_bootstrap_default_content()
     print()
     print("=" * 50)
     print("All config tests passed.")
